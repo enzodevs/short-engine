@@ -24,6 +24,7 @@ mac = [
     "scenedetect>=0.7.1",
     "silero-vad>=6.2.1",
     "ultralytics>=8.4.132",
+    "yt-dlp>=2026.8.19",
 ]
 
 [build-system]
