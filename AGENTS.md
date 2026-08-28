@@ -36,8 +36,9 @@ concerns without an explicit spec change.
 - Python 3.12 managed by `uv`; dependencies and lockfile live in
   `pyproject.toml` and `uv.lock`.
 - CLI: Typer. Validation/serialization: Pydantic v2. Media: FFmpeg/ffprobe.
-- Apple-native inference: MLX Whisper and MLX-VLM. Scene detection:
-  PySceneDetect. Speech boundaries: Silero VAD through ONNX Runtime.
+- Apple-native ASR uses MLX Whisper. Gemini is the primary semantic/multimodal
+  ranker behind a typed adapter; MLX-VLM remains an optional local ranker.
+  Scene detection uses PySceneDetect and speech boundaries use Silero VAD.
 - Speaker diarization is an optional pyannote.audio adapter; the core timeline
   understands speaker labels but does not require diarization to complete.
 - Subject tracking: an adapter selected by benchmark; the initial preferred

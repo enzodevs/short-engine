@@ -1,6 +1,6 @@
 # Short Engine v1 Specification
 
-Status: **Proposed for review**  
+Status: **Approved for implementation**  
 Target: macOS Apple Silicon, reference hardware MacBook Pro M5 / 32 GB  
 Delivery shape: local modular monolith with a CLI
 
@@ -48,8 +48,9 @@ without any SaaS, account, database, or graphical interface.
   executables.
 - Local files are the canonical input. URL ingestion is convenience functionality
   implemented by yt-dlp and may require a user-selected browser profile.
-- Local inference is the default. A remote Gemini adapter is optional and must
-  receive only the minimum derived inputs configured by the user.
+- MLX inference is the default for ASR. Gemini is the primary ranker and must
+  receive only the minimum transcript and sampled-frame evidence needed for a
+  candidate; an MLX-VLM ranker remains an optional fully local adapter.
 - Model names are configuration. The repository does not assume one checkpoint
   will remain best indefinitely.
 - V1 optimizes podcasts, interviews, commentary, tutorials, and talking-head
@@ -196,8 +197,8 @@ tracking, and FFmpeg render and emits a benchmark report per stage.
 | Speech activity | Silero VAD with ONNX Runtime | Lightweight speech boundaries without requiring PyTorch in the core path |
 | Scene boundaries | PySceneDetect `AdaptiveDetector` | Maintained Python API and robust content-based detection |
 | Optional speaker diarization | pyannote.audio Community-1 | Strong local open-source diarization; isolated because model download and CPU cost are optional |
-| Local multimodal ranker | MLX-VLM | Local image/video-aware inference on Apple Silicon with structured-output support |
-| Optional quality ranker | Google Gen AI adapter | Comparison/upgrade path; never a domain dependency |
+| Primary multimodal ranker | Google Gen AI adapter | User-selected quality path with strict structured output; never a domain dependency |
+| Optional local ranker | MLX-VLM | Fully local image/video-aware inference on Apple Silicon |
 | Subject tracking | Ultralytics tracker on MPS behind `SubjectTracker` | Strong off-the-shelf detection/tracking; benchmark before locking a checkpoint |
 | Captions | ASS subtitle generation + FFmpeg | Precise styling/timing without a custom video compositor |
 | Tests | pytest + Typer `CliRunner` | Mature behavior and CLI testing |
@@ -248,7 +249,7 @@ flowchart LR
     MLXW[MLX Whisper]
     Scene[PySceneDetect]
     VAD[Silero ONNX]
-    VLM[MLX-VLM]
+    VLM[Gemini / optional MLX-VLM]
     Track[Subject Tracker]
   end
 

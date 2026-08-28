@@ -1,0 +1,71 @@
+[project]
+name = "short-engine"
+version = "0.1.0"
+description = "Local-first engine for finding and rendering powerful short-form video clips"
+authors = [
+    { name = "Enzo Cambraia", email = "enzo.cambraia@fluxomind.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "google-genai>=2.20.0",
+    "platformdirs>=4.11.5",
+    "pydantic>=2.13.5",
+    "pydantic-settings>=2.15.0",
+    "typer>=0.27.2",
+]
+
+[project.scripts]
+short-engine = "short_engine:main"
+
+[project.optional-dependencies]
+mac = [
+    "mlx-whisper>=0.4.3",
+    "onnxruntime>=1.29.0",
+    "scenedetect>=0.7.1",
+    "silero-vad>=6.2.1",
+    "ultralytics>=8.4.132",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.33,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "hypothesis>=6.165.10",
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.16.5",
+    "ty>=0.0.75",
+]
+
+[tool.pytest.ini_options]
+addopts = "--strict-config --strict-markers -q"
+testpaths = ["tests"]
+markers = [
+    "hardware: requires Apple Silicon models and may download checkpoints",
+    "network: reaches an external API or URL",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["short_engine"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF", "ANN"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["ANN201"]
+
+[tool.ty.rules]
+missing-type-argument = "error"
+possibly-unresolved-reference = "warn"
+unsound-return-statement = "error"
