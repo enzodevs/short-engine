@@ -19,6 +19,7 @@ short-engine = "short_engine:main"
 
 [project.optional-dependencies]
 mac = [
+    "lap>=0.5.12",
     "mlx-whisper>=0.4.3",
     "onnxruntime>=1.29.0",
     "scenedetect>=0.7.1",

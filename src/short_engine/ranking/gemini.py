@@ -26,10 +26,12 @@ class GeminiRanker:
         self.model = model
         self.debug_directory = debug_directory
         self.attempts = attempts
+        self._client: Any | None = None
         if generate is None:
             from google import genai
 
-            generate = genai.Client(api_key=api_key).models.generate_content
+            self._client = genai.Client(api_key=api_key)
+            generate = self._client.models.generate_content
         self.generate = generate
 
     def rank(

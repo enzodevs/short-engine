@@ -1,5 +1,8 @@
 """PySceneDetect and Silero VAD adapters."""
 
+import sys
+import wave
+from array import array
 from pathlib import Path
 
 from short_engine.core.errors import DependencyError, InferenceError
@@ -22,12 +25,19 @@ class SceneDetector:
 class SileroSpeechDetector:
     def detect(self, audio: Path) -> list[DetectedBoundary]:
         try:
-            from silero_vad import get_speech_timestamps, load_silero_vad, read_audio
+            import torch
+            from silero_vad import get_speech_timestamps, load_silero_vad
         except ImportError as error:
             raise DependencyError("Install the mac extra to use Silero VAD") from error
         try:
             model = load_silero_vad(onnx=True)
-            waveform = read_audio(str(audio))
+            with wave.open(str(audio), "rb") as source:
+                if source.getnchannels() != 1 or source.getframerate() != 16_000:
+                    raise ValueError("Silero input must be mono PCM at 16 kHz")
+                samples = array("h", source.readframes(source.getnframes()))
+            if sys.byteorder != "little":
+                samples.byteswap()
+            waveform = torch.tensor(samples, dtype=torch.float32).div_(32768.0)
             regions = get_speech_timestamps(waveform, model, return_seconds=True)
         except Exception as error:
             raise InferenceError("Silero VAD failed") from error

@@ -1,5 +1,6 @@
 .DS_Store
 .env
+*.pt
 .pytest_cache/
 .ruff_cache/
 .venv/

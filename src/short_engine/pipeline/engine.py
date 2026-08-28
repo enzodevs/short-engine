@@ -3,7 +3,7 @@
 import hashlib
 from pathlib import Path
 
-from pydantic import BaseModel
+from pydantic import BaseModel, TypeAdapter
 
 from short_engine.candidates.generator import CandidateConfig, TranscriptCandidateGenerator
 from short_engine.candidates.models import Candidate
@@ -25,6 +25,7 @@ from short_engine.rendering.captions import AssCaptionWriter
 from short_engine.rendering.renderer import FFmpegRenderer
 from short_engine.run.manifest import Artifact, ManifestStore, RunManifest
 from short_engine.segmentation.adapters import SceneDetector, SileroSpeechDetector
+from short_engine.segmentation.models import BoundaryKind, Timeline
 from short_engine.segmentation.timeline import TimelineBuilder
 from short_engine.system.process import SubprocessRunner
 from short_engine.transcription.mlx import MLXWhisperTranscriber
@@ -49,6 +50,7 @@ class Engine:
         aspect: AspectRatio = AspectRatio.VERTICAL,
         language: str | None = None,
         cookies_from_browser: str | None = None,
+        render_outputs: bool = True,
     ) -> EngineResult:
         run_id = hashlib.sha256(f"{source}:{aspect}:{language}".encode()).hexdigest()[:12]
         run_dir = self.settings.output_root / run_id
@@ -100,6 +102,11 @@ class Engine:
         if not candidates:
             raise InputError("No coherent candidate windows were found")
         candidates = candidates[:24]
+        candidates_path = run_dir / "candidates" / "candidates.json"
+        candidates_path.parent.mkdir(parents=True, exist_ok=True)
+        candidates_path.write_text(
+            TypeAdapter(list[Candidate]).dump_json(candidates, indent=2).decode()
+        )
         key = self.settings.gemini_api_key
         if key is None:
             raise InputError("GEMINI_API_KEY is required for ranking")
@@ -127,7 +134,74 @@ class Engine:
             rank,
         )
         selection = Selection.model_validate_json(ranking_path.read_text())
-        probe = FFprobe(self.runner).inspect(asset.path)
+        renders = (
+            self._render_selection(
+                asset.path, run_dir, transcript, candidates, selection, aspect, store
+            )
+            if render_outputs
+            else []
+        )
+        return EngineResult(manifest=store.path, renders=renders, selection=selection)
+
+    def render(
+        self,
+        manifest_path: Path,
+        candidate_ids: list[str] | None = None,
+        aspect: AspectRatio = AspectRatio.VERTICAL,
+    ) -> EngineResult:
+        store = ManifestStore(manifest_path)
+        manifest = store.load()
+        run_dir = manifest_path.parent
+        source = Path(manifest.source).expanduser()
+        if not source.is_file():
+            downloads = sorted((run_dir / "source").glob("source_*.mp4"))
+            if not downloads:
+                raise InputError("Downloaded source is missing from this run")
+            source = downloads[0]
+        transcript = Transcript.model_validate_json(
+            (run_dir / "analysis" / "transcript.json").read_text()
+        )
+        candidates = TypeAdapter(list[Candidate]).validate_json(
+            (run_dir / "candidates" / "candidates.json").read_text()
+        )
+        selection = Selection.model_validate_json(
+            (run_dir / "candidates" / "selection.json").read_text()
+        )
+        if candidate_ids:
+            wanted = set(candidate_ids)
+            selection = Selection(
+                selected=[item for item in selection.selected if item.candidate_id in wanted],
+                rejections=selection.rejections,
+            )
+            missing = wanted - {item.candidate_id for item in selection.selected}
+            if missing:
+                raise InputError(
+                    f"Candidate IDs are not selected in this manifest: {', '.join(sorted(missing))}"
+                )
+        renders = self._render_selection(
+            source, run_dir, transcript, candidates, selection, aspect, store
+        )
+        return EngineResult(manifest=manifest_path, renders=renders, selection=selection)
+
+    def _render_selection(
+        self,
+        source: Path,
+        run_dir: Path,
+        transcript: Transcript,
+        candidates: list[Candidate],
+        selection: Selection,
+        aspect: AspectRatio,
+        store: ManifestStore,
+    ) -> list[Path]:
+        probe = FFprobe(self.runner).inspect(source)
+        timeline = Timeline.model_validate_json(
+            (run_dir / "analysis" / "timeline.json").read_text()
+        )
+        scene_boundaries = [
+            boundary.at_seconds
+            for boundary in timeline.boundaries
+            if BoundaryKind.SCENE in boundary.kinds
+        ]
         by_id = {item.id: item for item in candidates}
         renders: list[Path] = []
         for index, assessment in enumerate(selection.selected, start=1):
@@ -141,7 +215,7 @@ class Engine:
             ) -> list[Artifact]:
                 try:
                     track = UltralyticsSubjectTracker(self.settings.tracker_model).track(
-                        asset.path, candidate.time_range
+                        source, candidate.time_range, scene_boundaries
                     )
                 except RuntimeError:
                     track = SubjectTrack(observations=[])
@@ -166,7 +240,7 @@ class Engine:
                     candidate.time_range.start_seconds,
                 )
                 rendered = FFmpegRenderer(self.runner).render(
-                    asset.path,
+                    source,
                     output_path,
                     candidate.time_range,
                     crop,
@@ -176,8 +250,8 @@ class Engine:
 
             store.execute(
                 f"render:{candidate.id}",
-                f"{candidate.id}:{aspect}:{self.settings.tracker_model}",
+                f"{candidate.id}:{aspect}:{self.settings.tracker_model}:tracker-v2",
                 render,
             )
             renders.append(output_path)
-        return EngineResult(manifest=store.path, renders=renders, selection=selection)
+        return renders

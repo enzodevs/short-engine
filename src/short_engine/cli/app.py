@@ -47,3 +47,34 @@ def inspect(manifest: Annotated[str, typer.Argument(help="Run manifest path")]) 
     typer.echo(f"Run: {value.run_id}\nSource: {value.source}")
     for name, stage in value.stages.items():
         typer.echo(f"{name}: {stage.status} ({stage.elapsed_seconds or 0:.2f}s)")
+
+
+@app.command()
+def analyze(
+    source: Annotated[str, typer.Argument(help="Local media path or URL")],
+    clips: Annotated[int, typer.Option(min=1, max=20)] = 3,
+    language: Annotated[str | None, typer.Option()] = None,
+    cookies_from_browser: Annotated[str | None, typer.Option()] = None,
+) -> None:
+    """Analyze and rank candidates without rendering video."""
+    result = Engine().run(
+        source,
+        clips,
+        AspectRatio.VERTICAL,
+        language,
+        cookies_from_browser,
+        render_outputs=False,
+    )
+    typer.echo(f"Manifest: {result.manifest}")
+
+
+@app.command("render")
+def render_command(
+    manifest: Annotated[Path, typer.Argument(help="Run manifest path")],
+    candidate: Annotated[list[str] | None, typer.Option("--candidate")] = None,
+    aspect: Annotated[AspectRatio, typer.Option()] = AspectRatio.VERTICAL,
+) -> None:
+    """Render selected candidates without rerunning analysis or ranking."""
+    result = Engine().render(manifest, candidate, aspect)
+    for output in result.renders:
+        typer.echo(str(output))
