@@ -6,7 +6,7 @@ from short_engine.transcription.models import TimedWord
 
 
 class AssCaptionWriter:
-    def __init__(self, words_per_chunk: int = 4) -> None:
+    def __init__(self, words_per_chunk: int = 3) -> None:
         if words_per_chunk < 1:
             raise ValueError("words_per_chunk must be positive")
         self.words_per_chunk = words_per_chunk
@@ -21,8 +21,8 @@ PlayResY: 1920
             "Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,"
             "BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,"
             "BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding\n"
-            "Style: Default,Arial Black,86,&H00FFFFFF,&H003BEBFF,&H00000000,"
-            "&H64000000,-1,0,0,0,100,100,1,0,1,5,2,2,90,90,330,1\n"
+            "Style: Default,Arial Black,92,&H00FFFFFF,&H003BEBFF,&H00000000,"
+            "&H64000000,-1,0,0,0,100,100,1,0,1,6,2,2,90,90,560,1\n"
             "[Events]\n"
             "Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text\n"
         )
@@ -49,7 +49,7 @@ PlayResY: 1920
     def _highlighted_chunk(cls, words: list[TimedWord], active_index: int) -> str:
         rendered: list[str] = []
         for index, word in enumerate(words):
-            text = cls._escape(word.text)
+            text = cls._escape(word.text).upper()
             if index == active_index:
                 text = rf"{{\c&H003BEBFF&\fscx112\fscy112}}{text}{{\r}}"
             rendered.append(text)

@@ -15,7 +15,7 @@ def test_ass_captions_escape_text_and_shift_timestamps(tmp_path: Path) -> None:
     )
     content = path.read_text()
     assert "0:00:02.00,0:00:03.00" in content
-    assert r"Olá \{mundo\}" in content
+    assert r"OLÁ \{MUNDO\}" in content
     assert "Arial Black" in content
     assert ",-1,0,0,0," in content
 
@@ -32,7 +32,7 @@ def test_ass_captions_highlight_active_word_in_short_chunks(tmp_path: Path) -> N
     content = path.read_text()
     assert content.count("Dialogue:") == 4
     assert r"{\c&H003BEBFF&\fscx112\fscy112}" in content
-    assert "Uma legenda forte agora" in content.replace(
+    assert "UMA LEGENDA FORTE AGORA" in content.replace(
         r"{\c&H003BEBFF&\fscx112\fscy112}", ""
     ).replace(r"{\r}", "")
 
@@ -66,8 +66,11 @@ def test_ffmpeg_renderer_emits_vertical_h264_aac(tmp_path: Path) -> None:
     plan = CropPlan(
         crop_width=203,
         crop_height=360,
-        samples=[CropSample(time_seconds=0, x=200, y=0)],
-        used_fallback=True,
+        samples=[
+            CropSample(time_seconds=0, x=180, y=0),
+            CropSample(time_seconds=0.8, x=220, y=0),
+        ],
+        used_fallback=False,
     )
     output = FFmpegRenderer(runner).render(
         source, tmp_path / "short.mp4", TimeRange(start_seconds=0, end_seconds=0.8), plan
@@ -89,3 +92,24 @@ def test_ffmpeg_renderer_emits_vertical_h264_aac(tmp_path: Path) -> None:
     assert '"height": 1920' in probe.stdout
     assert '"codec_name": "h264"' in probe.stdout
     assert '"codec_name": "aac"' in probe.stdout
+
+
+def test_motion_expression_interpolates_crop_samples() -> None:
+    plan = CropPlan(
+        crop_width=400,
+        crop_height=700,
+        samples=[
+            CropSample(time_seconds=10, x=100, y=0),
+            CropSample(time_seconds=11, x=200, y=0),
+            CropSample(time_seconds=12, x=300, y=0),
+        ],
+        used_fallback=False,
+    )
+
+    expression = FFmpegRenderer._motion_expression(
+        plan, TimeRange(start_seconds=10, end_seconds=12), "x"
+    )
+
+    assert "t-0.000" in expression
+    assert "100.00" in expression
+    assert "300.0" in expression

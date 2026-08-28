@@ -17,6 +17,7 @@ from short_engine.ingest.resolver import SourceResolver
 from short_engine.ranking.frames import FrameSampler
 from short_engine.ranking.gemini import GeminiRanker
 from short_engine.ranking.models import Selection
+from short_engine.ranking.refiner import GeminiBoundaryRefiner
 from short_engine.ranking.selector import CandidateSelector
 from short_engine.reframing.models import SubjectTrack
 from short_engine.reframing.planner import CropPlanner
@@ -134,6 +135,26 @@ class Engine:
             rank,
         )
         selection = Selection.model_validate_json(ranking_path.read_text())
+        refined_path = run_dir / "candidates" / "refined-candidates.json"
+
+        def refine_boundaries() -> list[Artifact]:
+            selected_ids = {item.candidate_id for item in selection.selected}
+            refiner = GeminiBoundaryRefiner(key.get_secret_value(), self.settings.gemini_model)
+            refined = [
+                refiner.refine(candidate, transcript) if candidate.id in selected_ids else candidate
+                for candidate in candidates
+            ]
+            refined_path.write_text(
+                TypeAdapter(list[Candidate]).dump_json(refined, indent=2).decode()
+            )
+            return [Artifact.from_path(refined_path, kind="refined-candidates")]
+
+        store.execute(
+            "refinement",
+            f"{candidate_fingerprint}:{self.settings.gemini_model}:semantic-v1",
+            refine_boundaries,
+        )
+        candidates = TypeAdapter(list[Candidate]).validate_json(refined_path.read_text())
         renders = (
             self._render_selection(
                 asset.path, run_dir, transcript, candidates, selection, aspect, store
@@ -161,9 +182,11 @@ class Engine:
         transcript = Transcript.model_validate_json(
             (run_dir / "analysis" / "transcript.json").read_text()
         )
-        candidates = TypeAdapter(list[Candidate]).validate_json(
-            (run_dir / "candidates" / "candidates.json").read_text()
+        refined_path = run_dir / "candidates" / "refined-candidates.json"
+        source_candidates = (
+            refined_path if refined_path.is_file() else run_dir / "candidates" / "candidates.json"
         )
+        candidates = TypeAdapter(list[Candidate]).validate_json(source_candidates.read_text())
         selection = Selection.model_validate_json(
             (run_dir / "candidates" / "selection.json").read_text()
         )
@@ -263,7 +286,7 @@ class Engine:
 
             store.execute(
                 f"render:{candidate.id}",
-                f"{candidate.id}:{aspect}:{self.settings.tracker_model}:render-v4-caption-pop",
+                f"{candidate.id}:{aspect}:{self.settings.tracker_model}:render-v5-dynamic-caps",
                 render,
             )
             renders.append(output_path)
