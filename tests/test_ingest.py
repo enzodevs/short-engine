@@ -64,6 +64,7 @@ def test_url_source_delegates_auth_to_yt_dlp_without_raw_cookies(tmp_path: Path)
     assert "--cookies-from-browser" in command
     assert "chrome:Profile 3" in command
     assert "--remote-components" in command
+    assert "--ffmpeg-location" in command
     assert asset.path == output
     assert asset.downloaded is True
 

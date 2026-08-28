@@ -263,7 +263,7 @@ class Engine:
 
             store.execute(
                 f"render:{candidate.id}",
-                f"{candidate.id}:{aspect}:{self.settings.tracker_model}:render-v3",
+                f"{candidate.id}:{aspect}:{self.settings.tracker_model}:render-v4-caption-pop",
                 render,
             )
             renders.append(output_path)

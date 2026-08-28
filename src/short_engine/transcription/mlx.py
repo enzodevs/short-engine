@@ -1,10 +1,12 @@
 """MLX Whisper adapter for Apple Silicon."""
 
+import os
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, cast
 
 from short_engine.core.errors import DependencyError, InferenceError
+from short_engine.system.process import resolve_executable
 from short_engine.transcription.models import ASRConfig, TimedWord, Transcript, TranscriptSegment
 
 TranscribeFunction = Callable[..., dict[str, Any]]
@@ -16,8 +18,13 @@ def _default_transcribe(path: str, **options: object) -> dict[str, Any]:
     except ImportError as error:
         raise DependencyError("Install the mac extra to use MLX Whisper") from error
     transcribe = cast(TranscribeFunction, mlx_whisper.transcribe)
-    result = transcribe(path, **options)
-    return result
+    original_path = os.environ.get("PATH", "")
+    ffmpeg_directory = str(Path(resolve_executable("ffmpeg")).parent)
+    os.environ["PATH"] = f"{ffmpeg_directory}{os.pathsep}{original_path}"
+    try:
+        return transcribe(path, **options)
+    finally:
+        os.environ["PATH"] = original_path
 
 
 class MLXWhisperTranscriber:
@@ -33,9 +40,14 @@ class MLXWhisperTranscriber:
             options["language"] = config.language
         try:
             raw = self.transcribe_fn(str(audio), **options)
-            segments = [self._segment(item) for item in raw.get("segments", [])]
         except (KeyError, TypeError, ValueError) as error:
             raise InferenceError("MLX Whisper returned malformed transcription data") from error
+        segments: list[TranscriptSegment] = []
+        for item in raw.get("segments", []):
+            try:
+                segments.append(self._segment(item))
+            except (KeyError, TypeError, ValueError):
+                continue
         if not segments:
             raise InferenceError("MLX Whisper detected no speech")
         language = str(raw.get("language") or config.language or "unknown")
@@ -48,18 +60,24 @@ class MLXWhisperTranscriber:
 
     @staticmethod
     def _segment(raw: dict[str, Any]) -> TranscriptSegment:
-        words = [
-            TimedWord(
-                start_seconds=float(word["start"]),
-                end_seconds=float(word["end"]),
-                text=str(word["word"]).strip(),
-                confidence=float(word["probability"])
-                if word.get("probability") is not None
-                else None,
-            )
-            for word in raw.get("words", [])
-            if str(word.get("word", "")).strip()
-        ]
+        words: list[TimedWord] = []
+        for word in raw.get("words", []):
+            try:
+                text = str(word.get("word", "")).strip()
+                if not text:
+                    continue
+                words.append(
+                    TimedWord(
+                        start_seconds=float(word["start"]),
+                        end_seconds=float(word["end"]),
+                        text=text,
+                        confidence=float(word["probability"])
+                        if word.get("probability") is not None
+                        else None,
+                    )
+                )
+            except (KeyError, TypeError, ValueError):
+                continue
         return TranscriptSegment(
             start_seconds=float(raw["start"]),
             end_seconds=float(raw["end"]),

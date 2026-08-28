@@ -5,6 +5,9 @@ arquitetura prioriza Apple Silicon: MLX Whisper faz a transcrição, PySceneDete
 e Silero VAD formam a timeline, Gemini avalia texto e frames, YOLO26 rastreia o
 assunto dominante em MPS e FFmpeg renderiza o resultado.
 
+As legendas usam um preset bold/karaoke para Shorts: blocos de quatro palavras,
+contorno de alto contraste e destaque amarelo na palavra ativa.
+
 ## Preparação
 
 Requer macOS Apple Silicon, Python 3.12+, `uv` e um FFmpeg compilado com

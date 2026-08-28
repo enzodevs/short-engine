@@ -50,3 +50,27 @@ def test_mlx_adapter_rejects_empty_speech(tmp_path: Path) -> None:
             audio,
             ASRConfig(model="test-model"),
         )
+
+
+def test_mlx_adapter_skips_degenerate_units_but_keeps_valid_speech(tmp_path: Path) -> None:
+    raw = {
+        "segments": [
+            {"start": 0, "end": 0, "text": "invalid", "words": []},
+            {
+                "start": 1,
+                "end": 2,
+                "text": "fala válida",
+                "words": [
+                    {"start": 1, "end": 1, "word": "zero"},
+                    {"start": 1.1, "end": 1.8, "word": "válida", "probability": 0.9},
+                ],
+            },
+        ]
+    }
+
+    transcript = MLXWhisperTranscriber(lambda *_args, **_kwargs: raw).transcribe(
+        tmp_path / "audio.wav", ASRConfig(model="test-model")
+    )
+
+    assert [segment.text for segment in transcript.segments] == ["fala válida"]
+    assert [word.text for word in transcript.segments[0].words] == ["válida"]

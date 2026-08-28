@@ -16,6 +16,25 @@ def test_ass_captions_escape_text_and_shift_timestamps(tmp_path: Path) -> None:
     content = path.read_text()
     assert "0:00:02.00,0:00:03.00" in content
     assert r"Olá \{mundo\}" in content
+    assert "Arial Black" in content
+    assert ",-1,0,0,0," in content
+
+
+def test_ass_captions_highlight_active_word_in_short_chunks(tmp_path: Path) -> None:
+    path = tmp_path / "karaoke.ass"
+    words = [
+        TimedWord(start_seconds=index, end_seconds=index + 0.8, text=text)
+        for index, text in enumerate(["Uma", "legenda", "forte", "agora"])
+    ]
+
+    AssCaptionWriter(words_per_chunk=4).write(path, words)
+
+    content = path.read_text()
+    assert content.count("Dialogue:") == 4
+    assert r"{\c&H003BEBFF&\fscx112\fscy112}" in content
+    assert "Uma legenda forte agora" in content.replace(
+        r"{\c&H003BEBFF&\fscx112\fscy112}", ""
+    ).replace(r"{\r}", "")
 
 
 def test_ffmpeg_renderer_emits_vertical_h264_aac(tmp_path: Path) -> None:

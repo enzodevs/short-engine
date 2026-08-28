@@ -6,7 +6,7 @@ from pathlib import Path
 from short_engine.core.errors import InputError, MediaError
 from short_engine.ingest.models import SourceAsset, SourceRequest
 from short_engine.run.manifest import hash_file
-from short_engine.system.process import CommandRunner
+from short_engine.system.process import CommandRunner, resolve_executable
 
 
 class SourceResolver:
@@ -41,6 +41,8 @@ class SourceResolver:
             "--no-playlist",
             "--merge-output-format",
             "mp4",
+            "--ffmpeg-location",
+            str(Path(resolve_executable("ffmpeg")).parent),
             "--format",
             f"bv*[height<={request.download_height}]+ba/b[height<={request.download_height}]",
             "--output",
