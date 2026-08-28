@@ -22,3 +22,11 @@ def test_invalid_aspect_is_rejected_before_pipeline_execution() -> None:
 
     assert result.exit_code != 0
     assert "Invalid value" in result.stderr
+
+
+def test_expected_engine_error_is_actionable_without_traceback() -> None:
+    result = runner.invoke(app, ["run", "definitely-missing.mp4"])
+
+    assert result.exit_code == 1
+    assert "Error: Local source does not exist" in result.stderr
+    assert "Traceback" not in result.stderr

@@ -214,8 +214,15 @@ class Engine:
                 output_path: Path = output_path,
             ) -> list[Artifact]:
                 try:
+                    candidate_scenes = [
+                        value
+                        for value in scene_boundaries
+                        if candidate.time_range.start_seconds
+                        <= value
+                        <= candidate.time_range.end_seconds
+                    ]
                     track = UltralyticsSubjectTracker(self.settings.tracker_model).track(
-                        source, candidate.time_range, scene_boundaries
+                        source, candidate.time_range, candidate_scenes
                     )
                 except RuntimeError:
                     track = SubjectTrack(observations=[])
@@ -226,6 +233,9 @@ class Engine:
                     probe.height or 1080,
                     aspect,
                 )
+                crop_path = run_dir / "renders" / f"short-{index:02d}.crop.json"
+                crop_path.parent.mkdir(parents=True, exist_ok=True)
+                crop_path.write_text(crop.model_dump_json(indent=2))
                 words = [
                     word
                     for segment in transcript.segments
@@ -246,11 +256,14 @@ class Engine:
                     crop,
                     caption_path,
                 )
-                return [Artifact.from_path(rendered, kind="render")]
+                return [
+                    Artifact.from_path(crop_path, kind="crop-plan"),
+                    Artifact.from_path(rendered, kind="render"),
+                ]
 
             store.execute(
                 f"render:{candidate.id}",
-                f"{candidate.id}:{aspect}:{self.settings.tracker_model}:tracker-v2",
+                f"{candidate.id}:{aspect}:{self.settings.tracker_model}:render-v3",
                 render,
             )
             renders.append(output_path)

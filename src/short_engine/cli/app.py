@@ -1,5 +1,6 @@
 """Typer composition root."""
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated
 
@@ -7,11 +8,20 @@ import typer
 
 from short_engine.cli.doctor import collect_checks
 from short_engine.core.config import Settings
+from short_engine.core.errors import ShortEngineError
 from short_engine.core.models import AspectRatio
 from short_engine.pipeline import Engine
 from short_engine.run.manifest import ManifestStore
 
 app = typer.Typer(no_args_is_help=True, pretty_exceptions_enable=False)
+
+
+def _engine_call[Result](action: Callable[[], Result]) -> Result:
+    try:
+        return action()
+    except ShortEngineError as error:
+        typer.echo(f"Error: {error}", err=True)
+        raise typer.Exit(1) from error
 
 
 @app.command()
@@ -34,7 +44,9 @@ def run(
     ] = None,
 ) -> None:
     """Analyze media and render ranked short clips."""
-    result = Engine().run(source, clips, aspect, language, cookies_from_browser)
+    result = _engine_call(
+        lambda: Engine().run(source, clips, aspect, language, cookies_from_browser)
+    )
     for output in result.renders:
         typer.echo(str(output))
     typer.echo(f"Manifest: {result.manifest}")
@@ -57,13 +69,15 @@ def analyze(
     cookies_from_browser: Annotated[str | None, typer.Option()] = None,
 ) -> None:
     """Analyze and rank candidates without rendering video."""
-    result = Engine().run(
-        source,
-        clips,
-        AspectRatio.VERTICAL,
-        language,
-        cookies_from_browser,
-        render_outputs=False,
+    result = _engine_call(
+        lambda: Engine().run(
+            source,
+            clips,
+            AspectRatio.VERTICAL,
+            language,
+            cookies_from_browser,
+            render_outputs=False,
+        )
     )
     typer.echo(f"Manifest: {result.manifest}")
 
@@ -75,6 +89,6 @@ def render_command(
     aspect: Annotated[AspectRatio, typer.Option()] = AspectRatio.VERTICAL,
 ) -> None:
     """Render selected candidates without rerunning analysis or ranking."""
-    result = Engine().render(manifest, candidate, aspect)
+    result = _engine_call(lambda: Engine().render(manifest, candidate, aspect))
     for output in result.renders:
         typer.echo(str(output))
