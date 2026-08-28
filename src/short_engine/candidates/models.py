@@ -12,3 +12,4 @@ class Candidate(BaseModel):
     time_range: TimeRange
     transcript: str = Field(min_length=1)
     segment_indexes: list[int]
+    boundary_signals: list[str] = Field(default_factory=lambda: ["speech", "sentence"])

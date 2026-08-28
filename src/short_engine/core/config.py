@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     output_root: Path = Path("output")
     cache_root: Path = Field(default_factory=lambda: user_cache_path("short-engine"))
     asr_model: str = "mlx-community/whisper-large-v3-turbo"
-    tracker_model: str = "yolo11n.pt"
+    tracker_model: str = "yolo26n.pt"
 
     @property
     def has_gemini_key(self) -> bool:
