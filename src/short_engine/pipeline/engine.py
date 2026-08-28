@@ -10,6 +10,7 @@ from short_engine.candidates.models import Candidate
 from short_engine.core.config import Settings
 from short_engine.core.errors import InputError
 from short_engine.core.models import AspectRatio
+from short_engine.editing.jumpcuts import JumpCutPlanner
 from short_engine.ingest.media import FFmpegMediaService
 from short_engine.ingest.models import SourceRequest
 from short_engine.ingest.probe import FFprobe
@@ -267,10 +268,13 @@ class Engine:
                     <= word.start_seconds
                     < candidate.time_range.end_seconds
                 ]
+                edit_plan = JumpCutPlanner().plan(candidate.time_range, words)
+                edit_path = run_dir / "renders" / f"short-{index:02d}.edit.json"
+                edit_path.write_text(edit_plan.model_dump_json(indent=2))
                 caption_path = AssCaptionWriter().write(
                     run_dir / "renders" / f"short-{index:02d}.ass",
-                    words,
-                    candidate.time_range.start_seconds,
+                    edit_plan.remap_words(words),
+                    0,
                 )
                 rendered = FFmpegRenderer(self.runner).render(
                     source,
@@ -278,15 +282,17 @@ class Engine:
                     candidate.time_range,
                     crop,
                     caption_path,
+                    edits=[segment.source for segment in edit_plan.segments],
                 )
                 return [
                     Artifact.from_path(crop_path, kind="crop-plan"),
+                    Artifact.from_path(edit_path, kind="edit-plan"),
                     Artifact.from_path(rendered, kind="render"),
                 ]
 
             store.execute(
                 f"render:{candidate.id}",
-                f"{candidate.id}:{aspect}:{self.settings.tracker_model}:render-v5-dynamic-caps",
+                f"{candidate.id}:{aspect}:{self.settings.tracker_model}:render-v8-comfort-blend",
                 render,
             )
             renders.append(output_path)

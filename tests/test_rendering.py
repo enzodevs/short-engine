@@ -1,4 +1,7 @@
+import json
 from pathlib import Path
+
+import pytest
 
 from short_engine.core.models import TimeRange
 from short_engine.reframing.models import CropPlan, CropSample
@@ -73,7 +76,14 @@ def test_ffmpeg_renderer_emits_vertical_h264_aac(tmp_path: Path) -> None:
         used_fallback=False,
     )
     output = FFmpegRenderer(runner).render(
-        source, tmp_path / "short.mp4", TimeRange(start_seconds=0, end_seconds=0.8), plan
+        source,
+        tmp_path / "short.mp4",
+        TimeRange(start_seconds=0, end_seconds=0.8),
+        plan,
+        edits=[
+            TimeRange(start_seconds=0, end_seconds=0.3),
+            TimeRange(start_seconds=0.5, end_seconds=0.8),
+        ],
     )
     probe = runner.run(
         [
@@ -81,7 +91,7 @@ def test_ffmpeg_renderer_emits_vertical_h264_aac(tmp_path: Path) -> None:
             "-v",
             "error",
             "-show_entries",
-            "stream=codec_name,width,height",
+            "format=duration:stream=codec_name,width,height",
             "-of",
             "json",
             str(output),
@@ -92,6 +102,7 @@ def test_ffmpeg_renderer_emits_vertical_h264_aac(tmp_path: Path) -> None:
     assert '"height": 1920' in probe.stdout
     assert '"codec_name": "h264"' in probe.stdout
     assert '"codec_name": "aac"' in probe.stdout
+    assert float(json.loads(probe.stdout)["format"]["duration"]) == pytest.approx(0.6, abs=0.08)
 
 
 def test_motion_expression_interpolates_crop_samples() -> None:

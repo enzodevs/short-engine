@@ -9,6 +9,7 @@ class SubjectObservation(BaseModel):
     center_x: float
     center_y: float
     confidence: float = Field(ge=0, le=1)
+    scene_id: int = Field(default=0, ge=0)
 
 
 class SubjectTrack(BaseModel):

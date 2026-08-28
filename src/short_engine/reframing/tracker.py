@@ -35,6 +35,7 @@ class UltralyticsSubjectTracker:
         observations: list[SubjectObservation] = []
         boundaries = iter(sorted(scene_boundaries or []))
         next_boundary = next(boundaries, None)
+        scene_id = 0
         frame_index = round(interval.start_seconds * fps)
         while capture.isOpened():
             success, frame = capture.read()
@@ -46,10 +47,11 @@ class UltralyticsSubjectTracker:
                 break
             if frame_index % 5:
                 continue
-            if next_boundary is not None and timestamp >= next_boundary:
+            while next_boundary is not None and timestamp >= next_boundary:
                 predictor: Any = getattr(model, "predictor", None)
                 for tracker in getattr(predictor, "trackers", []):
                     tracker.reset()
+                scene_id += 1
                 next_boundary = next(boundaries, None)
             result: Any = model.track(
                 frame,
@@ -78,6 +80,7 @@ class UltralyticsSubjectTracker:
                     center_x=(x1 + x2) / 2,
                     center_y=(y1 + y2) / 2,
                     confidence=float(confidences[best]),
+                    scene_id=scene_id,
                 )
             )
         capture.release()
