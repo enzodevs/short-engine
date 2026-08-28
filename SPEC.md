@@ -1,6 +1,6 @@
 # Short Engine v1 Specification
 
-Status: **Approved for implementation**  
+Status: **Implemented and hardware-smoke validated**
 Target: macOS Apple Silicon, reference hardware MacBook Pro M5 / 32 GB  
 Delivery shape: local modular monolith with a CLI
 
