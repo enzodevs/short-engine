@@ -100,9 +100,14 @@ class FFmpegRenderer:
             return str(round(getattr(samples[0], axis), 2))
         reduced = [samples[0]]
         for sample in samples[1:-1]:
-            if sample.time_seconds - reduced[-1].time_seconds >= 0.75:
+            elapsed = sample.time_seconds - reduced[-1].time_seconds
+            displacement = abs(getattr(sample, axis) - getattr(reduced[-1], axis))
+            if (elapsed >= 0.5 and displacement >= 24) or (elapsed >= 2.0 and displacement >= 8):
                 reduced.append(sample)
-        reduced.append(samples[-1])
+        if abs(getattr(samples[-1], axis) - getattr(reduced[-1], axis)) >= 8:
+            reduced.append(samples[-1])
+        if len(reduced) == 1:
+            return str(round(getattr(reduced[0], axis), 2))
         expression = str(round(getattr(reduced[-1], axis), 2))
         for left, right in reversed(list(pairwise(reduced))):
             start = max(0.0, left.time_seconds - interval.start_seconds)

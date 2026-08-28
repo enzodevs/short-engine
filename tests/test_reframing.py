@@ -67,3 +67,36 @@ def test_comfort_camera_limits_motion_inside_scene_but_resets_between_scenes() -
     assert abs(plan.samples[2].x - plan.samples[1].x) <= 38.4
     assert abs(plan.samples[3].x - plan.samples[2].x) > 38.4
     assert abs(plan.samples[4].x - plan.samples[3].x) <= 38.4
+
+
+def test_jump_cut_starts_new_camera_take_without_anticipation() -> None:
+    track = SubjectTrack(
+        observations=[
+            SubjectObservation(time_seconds=time, center_x=x, center_y=500, confidence=0.9)
+            for time, x in [
+                (0, 350),
+                (1, 350),
+                (2, 350),
+                (3, 1550),
+                (4, 1550),
+                (5, 1550),
+            ]
+        ]
+    )
+    plan = CropPlanner().plan(
+        TimeRange(start_seconds=0, end_seconds=5),
+        track,
+        1920,
+        1080,
+        AspectRatio.VERTICAL,
+        takes=[
+            TimeRange(start_seconds=0, end_seconds=2),
+            TimeRange(start_seconds=3, end_seconds=5),
+        ],
+    )
+
+    first_take = [sample.x for sample in plan.samples if sample.time_seconds <= 2]
+    second_take = [sample.x for sample in plan.samples if sample.time_seconds >= 3]
+    assert len(set(first_take)) == 1
+    assert len(set(second_take)) == 1
+    assert second_take[0] - first_take[-1] > 800

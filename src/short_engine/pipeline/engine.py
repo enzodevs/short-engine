@@ -237,6 +237,16 @@ class Engine:
                 index: int = index,
                 output_path: Path = output_path,
             ) -> list[Artifact]:
+                words = [
+                    word
+                    for segment in transcript.segments
+                    for word in segment.words
+                    if candidate.time_range.start_seconds
+                    <= word.start_seconds
+                    < candidate.time_range.end_seconds
+                ]
+                edit_plan = JumpCutPlanner().plan(candidate.time_range, words)
+                edit_ranges = [segment.source for segment in edit_plan.segments]
                 try:
                     candidate_scenes = [
                         value
@@ -256,19 +266,11 @@ class Engine:
                     probe.width or 1920,
                     probe.height or 1080,
                     aspect,
+                    takes=edit_ranges,
                 )
                 crop_path = run_dir / "renders" / f"short-{index:02d}.crop.json"
                 crop_path.parent.mkdir(parents=True, exist_ok=True)
                 crop_path.write_text(crop.model_dump_json(indent=2))
-                words = [
-                    word
-                    for segment in transcript.segments
-                    for word in segment.words
-                    if candidate.time_range.start_seconds
-                    <= word.start_seconds
-                    < candidate.time_range.end_seconds
-                ]
-                edit_plan = JumpCutPlanner().plan(candidate.time_range, words)
                 edit_path = run_dir / "renders" / f"short-{index:02d}.edit.json"
                 edit_path.write_text(edit_plan.model_dump_json(indent=2))
                 caption_path = AssCaptionWriter().write(
@@ -282,7 +284,7 @@ class Engine:
                     candidate.time_range,
                     crop,
                     caption_path,
-                    edits=[segment.source for segment in edit_plan.segments],
+                    edits=edit_ranges,
                 )
                 return [
                     Artifact.from_path(crop_path, kind="crop-plan"),
@@ -292,7 +294,7 @@ class Engine:
 
             store.execute(
                 f"render:{candidate.id}",
-                f"{candidate.id}:{aspect}:{self.settings.tracker_model}:render-v8-comfort-blend",
+                f"{candidate.id}:{aspect}:{self.settings.tracker_model}:render-v9-take-camera",
                 render,
             )
             renders.append(output_path)

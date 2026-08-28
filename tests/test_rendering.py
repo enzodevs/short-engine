@@ -124,3 +124,22 @@ def test_motion_expression_interpolates_crop_samples() -> None:
     assert "t-0.000" in expression
     assert "100.00" in expression
     assert "300.0" in expression
+
+
+def test_motion_expression_ignores_micro_adjustments() -> None:
+    plan = CropPlan(
+        crop_width=400,
+        crop_height=700,
+        samples=[
+            CropSample(time_seconds=10, x=100, y=0),
+            CropSample(time_seconds=11, x=104, y=0),
+            CropSample(time_seconds=12, x=106, y=0),
+        ],
+        used_fallback=False,
+    )
+
+    expression = FFmpegRenderer._motion_expression(
+        plan, TimeRange(start_seconds=10, end_seconds=12), "x"
+    )
+
+    assert expression == "100.0"
