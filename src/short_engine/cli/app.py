@@ -8,6 +8,8 @@ import typer
 from short_engine.cli.doctor import collect_checks
 from short_engine.core.config import Settings
 from short_engine.core.models import AspectRatio
+from short_engine.pipeline import Engine
+from short_engine.run.manifest import ManifestStore
 
 app = typer.Typer(no_args_is_help=True, pretty_exceptions_enable=False)
 
@@ -23,11 +25,25 @@ def doctor() -> None:
 
 @app.command()
 def run(
-    source: Annotated[Path, typer.Argument(help="Local media path")],
+    source: Annotated[str, typer.Argument(help="Local media path or URL")],
     clips: Annotated[int, typer.Option(min=1, max=20)] = 3,
     aspect: Annotated[AspectRatio, typer.Option()] = AspectRatio.VERTICAL,
     language: Annotated[str | None, typer.Option()] = None,
+    cookies_from_browser: Annotated[
+        str | None, typer.Option(help="Browser profile, e.g. chrome:Profile 3")
+    ] = None,
 ) -> None:
-    """Run the full local pipeline (implemented by subsequent tasks)."""
-    del source, clips, aspect, language
-    raise typer.BadParameter("pipeline implementation is not installed yet")
+    """Analyze media and render ranked short clips."""
+    result = Engine().run(source, clips, aspect, language, cookies_from_browser)
+    for output in result.renders:
+        typer.echo(str(output))
+    typer.echo(f"Manifest: {result.manifest}")
+
+
+@app.command()
+def inspect(manifest: Annotated[str, typer.Argument(help="Run manifest path")]) -> None:
+    """Print safe run status without model prompts or secrets."""
+    value = ManifestStore(Path(manifest)).load()
+    typer.echo(f"Run: {value.run_id}\nSource: {value.source}")
+    for name, stage in value.stages.items():
+        typer.echo(f"{name}: {stage.status} ({stage.elapsed_seconds or 0:.2f}s)")
