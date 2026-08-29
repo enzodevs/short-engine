@@ -6,8 +6,6 @@ from platformdirs import user_cache_path
 from pydantic import AliasChoices, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from short_engine.ranking.models import EditorialQualityGate
-
 
 class Settings(BaseSettings):
     """Effective engine settings loaded once at the composition root."""
@@ -33,7 +31,6 @@ class Settings(BaseSettings):
     tracker_model: Path = Field(
         default_factory=lambda: user_cache_path("short-engine") / "models" / "yolo26n.pt"
     )
-    editorial_quality: EditorialQualityGate = Field(default_factory=EditorialQualityGate)
 
     @property
     def has_gemini_key(self) -> bool:

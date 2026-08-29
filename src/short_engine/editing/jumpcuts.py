@@ -42,27 +42,22 @@ class EditPlan(BaseModel):
 
     def remap_words(self, words: list[TimedWord]) -> list[TimedWord]:
         remapped: list[TimedWord] = []
-        for word in words:
-            segment = next(
-                (
-                    item
-                    for item in self.segments
-                    if item.source.start_seconds <= word.start_seconds
-                    and word.end_seconds <= item.source.end_seconds
-                ),
-                None,
-            )
-            if segment is None:
-                continue
+        for segment in self.segments:
             offset = segment.output.start_seconds - segment.source.start_seconds
-            remapped.append(
-                TimedWord(
-                    start_seconds=word.start_seconds + offset,
-                    end_seconds=word.end_seconds + offset,
-                    text=word.text,
-                    confidence=word.confidence,
+            for word in sorted(words, key=lambda item: item.start_seconds):
+                if not (
+                    segment.source.start_seconds <= word.start_seconds
+                    and word.end_seconds <= segment.source.end_seconds
+                ):
+                    continue
+                remapped.append(
+                    TimedWord(
+                        start_seconds=word.start_seconds + offset,
+                        end_seconds=word.end_seconds + offset,
+                        text=word.text,
+                        confidence=word.confidence,
+                    )
                 )
-            )
         return remapped
 
 

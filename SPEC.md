@@ -516,21 +516,26 @@ because pinning “SOTA” names in architecture would make the design stale.
 
 ## 15. Editorial quality contract
 
-The batch engine treats a short as one continuous source interval by default.
-After multimodal ranking, a candidate must pass configurable minimums for the
-overall score, hook immediacy, narrative arc, payoff strength, standalone
-clarity, and maximum retention risk. Requesting a clip count never overrides
-this gate: producing no clip is correct when the source has no complete moment.
+The batch engine first constructs one global semantic map of the complete video:
+subjects, hooks, premises, evidence, and explicit payoffs. It then proposes
+typed edit plans rather than scoring fixed-duration windows in isolation.
 
-The exact interval assessed is the interval passed to rendering. Jump cuts may
-remove silence inside it, but no later semantic stage may shorten, reorder, or
-concatenate speech without a new quality assessment. Rendering must never
-manufacture a payoff by concatenating unrelated fragments.
+The supported production strategies are deliberately small:
 
-Typed non-contiguous story variants and retention maps remain research models,
-not part of the default batch pipeline. Reordering may only return after a
-separate semantic-continuity acceptance contract can prove referential
-continuity and that an explicit payoff resolves the opening promise.
+- `continuous`: one chronological 10-60 second source interval;
+- `payoff_teaser`: a 0.5-3 second excerpt copied from the plan's own payoff,
+  followed by the complete chronological interval containing that payoff.
+
+Every plan declares local hook and payoff ranges inside its main interval. A
+teaser must be contained by that same payoff; arbitrary sentence reordering and
+cross-topic concatenation are forbidden. Timestamps are normalized only to a
+nearby transcript boundary, otherwise the plan fails.
+
+An independent multimodal verifier evaluates the exact playback transcript and
+video ranges for coherence, standalone clarity, referential completeness,
+meaning preservation, and whether the payoff resolves the opening. Only plans
+that pass every invariant and the hook/retention thresholds may render.
+Requesting a clip count never overrides this gate.
 
 Genre grammar is configuration, not branching pipeline code. Audio direction is
 optional and depends on an explicitly licensed local catalog with provenance.

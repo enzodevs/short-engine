@@ -53,3 +53,19 @@ def test_jumpcut_planner_composes_multiple_source_ranges() -> None:
 
     assert [segment.source.start_seconds for segment in plan.segments] == [10, 0]
     assert plan.segments[1].output.start_seconds == 2
+
+
+def test_repeated_payoff_teaser_keeps_captions_in_both_playback_positions() -> None:
+    words = [word(0.2, 1, "setup"), word(10.2, 11, "payoff")]
+    plan = JumpCutPlanner().plan_many(
+        [
+            TimeRange(start_seconds=10, end_seconds=12),
+            TimeRange(start_seconds=0, end_seconds=12),
+        ],
+        words,
+    )
+
+    remapped = plan.remap_words(words)
+
+    assert [item.text for item in remapped] == ["payoff", "setup", "payoff"]
+    assert remapped[2].start_seconds > remapped[1].start_seconds

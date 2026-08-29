@@ -3,22 +3,17 @@
 import hashlib
 from pathlib import Path
 
-from pydantic import BaseModel, TypeAdapter
+from pydantic import BaseModel
 
-from short_engine.candidates.generator import CandidateConfig, TranscriptCandidateGenerator
-from short_engine.candidates.models import Candidate
-from short_engine.candidates.pool import CandidatePoolSampler
 from short_engine.core.config import Settings
 from short_engine.core.errors import InputError
 from short_engine.core.models import AspectRatio
+from short_engine.editorial.gemini import GeminiEditorialDirector
+from short_engine.editorial.models import EditorialDecision
 from short_engine.ingest.media import FFmpegMediaService
 from short_engine.ingest.models import SourceRequest
 from short_engine.ingest.resolver import SourceResolver
 from short_engine.pipeline.story_renderer import StoryRenderService
-from short_engine.ranking.frames import FrameSampler
-from short_engine.ranking.gemini import GeminiRanker
-from short_engine.ranking.models import Selection
-from short_engine.ranking.selector import CandidateSelector
 from short_engine.run.manifest import Artifact, ManifestStore, RunManifest
 from short_engine.segmentation.adapters import SceneDetector, SileroSpeechDetector
 from short_engine.segmentation.timeline import TimelineBuilder
@@ -30,7 +25,7 @@ from short_engine.transcription.models import ASRConfig, Transcript
 class EngineResult(BaseModel):
     manifest: Path
     renders: list[Path]
-    selection: Selection
+    decision: EditorialDecision
 
 
 class Engine:
@@ -93,67 +88,39 @@ class Engine:
             f"{asset.source_fingerprint}:adaptive-scene:silero-v6",
             segment,
         )
-        candidates = TranscriptCandidateGenerator().generate(
-            transcript,
-            CandidateConfig(
-                min_duration_seconds=15,
-                target_duration_seconds=35,
-                max_duration_seconds=60,
-                stride_segments=1,
-            ),
-        )
-        if not candidates:
-            raise InputError("No coherent candidate windows were found")
-        candidates = CandidatePoolSampler().select(candidates, 24)
-        candidates_path = run_dir / "candidates" / "candidates.json"
-        candidates_path.parent.mkdir(parents=True, exist_ok=True)
-        candidates_path.write_text(
-            TypeAdapter(list[Candidate]).dump_json(candidates, indent=2).decode()
-        )
         key = self.settings.gemini_api_key
         if key is None:
-            raise InputError("GEMINI_API_KEY is required for ranking")
-        ranking_path = run_dir / "candidates" / "selection.json"
+            raise InputError("GEMINI_API_KEY is required for editorial direction")
+        decision_path = run_dir / "editorial" / "decision.json"
 
-        def rank() -> list[Artifact]:
-            sampler = FrameSampler(self.runner)
-            evidence = {
-                item.id: sampler.sample(proxy, item, run_dir / "candidates" / "frames")
-                for item in candidates
-            }
-            assessments = GeminiRanker(
+        def direct() -> list[Artifact]:
+            decision = GeminiEditorialDirector(
                 key.get_secret_value(),
                 self.settings.gemini_model,
                 debug_directory=run_dir / "debug",
-                assessment_directory=run_dir / "candidates" / "assessments-v1",
-            ).rank(candidates, evidence, video=proxy)
-            selection = CandidateSelector(self.settings.editorial_quality).select(
-                candidates, assessments, clips
-            )
-            ranking_path.write_text(selection.model_dump_json(indent=2))
-            return [Artifact.from_path(ranking_path, kind="selection")]
+            ).direct(transcript, proxy, clips)
+            decision_path.parent.mkdir(parents=True, exist_ok=True)
+            decision_path.write_text(decision.model_dump_json(indent=2))
+            return [Artifact.from_path(decision_path, kind="editorial-decision")]
 
-        candidate_fingerprint = ":".join(item.id for item in candidates)
         store.execute(
-            "ranking",
-            f"{candidate_fingerprint}:{self.settings.gemini_model}:{clips}:"
-            f"{self.settings.editorial_quality.model_dump_json()}:viral-temporal-v2",
-            rank,
+            "editorial-direction",
+            f"{asset.source_fingerprint}:{self.settings.gemini_model}:{clips}:global-editor-v3",
+            direct,
         )
-        selection = Selection.model_validate_json(ranking_path.read_text())
-        if not selection.selected:
+        decision = EditorialDecision.model_validate_json(decision_path.read_text())
+        if not decision.selected_plan_ids:
             raise InputError(
-                "No excerpt passed the editorial quality gate: a complete standalone hook, "
-                "narrative arc, and explicit payoff are required"
+                "No whole-video edit plan passed final coherence and payoff verification"
             )
         renders = (
             StoryRenderService(self.settings, self.runner).render(
-                asset.path, run_dir, transcript, candidates, selection, aspect, store
+                asset.path, run_dir, transcript, decision, aspect, store
             )
             if render_outputs
             else []
         )
-        return EngineResult(manifest=store.path, renders=renders, selection=selection)
+        return EngineResult(manifest=store.path, renders=renders, decision=decision)
 
     def render(
         self,
@@ -173,24 +140,19 @@ class Engine:
         transcript = Transcript.model_validate_json(
             (run_dir / "analysis" / "transcript.json").read_text()
         )
-        candidates = TypeAdapter(list[Candidate]).validate_json(
-            (run_dir / "candidates" / "candidates.json").read_text()
-        )
-        selection = Selection.model_validate_json(
-            (run_dir / "candidates" / "selection.json").read_text()
+        decision = EditorialDecision.model_validate_json(
+            (run_dir / "editorial" / "decision.json").read_text()
         )
         if candidate_ids:
             wanted = set(candidate_ids)
-            selection = Selection(
-                selected=[item for item in selection.selected if item.candidate_id in wanted],
-                rejections=selection.rejections,
-            )
-            missing = wanted - {item.candidate_id for item in selection.selected}
+            available = {item.id for item in decision.editorial_map.plans}
+            missing = wanted - available
             if missing:
                 raise InputError(
-                    f"Candidate IDs are not selected in this manifest: {', '.join(sorted(missing))}"
+                    f"Plan IDs are not present in this manifest: {', '.join(sorted(missing))}"
                 )
+            decision = decision.model_copy(update={"selected_plan_ids": list(wanted)})
         renders = StoryRenderService(self.settings, self.runner).render(
-            source, run_dir, transcript, candidates, selection, aspect, store
+            source, run_dir, transcript, decision, aspect, store
         )
-        return EngineResult(manifest=manifest_path, renders=renders, selection=selection)
+        return EngineResult(manifest=manifest_path, renders=renders, decision=decision)

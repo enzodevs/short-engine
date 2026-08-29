@@ -1,14 +1,12 @@
-"""Render selected candidates or composed stories."""
+"""Render verified global editorial plans."""
 
 from pathlib import Path
 
-from short_engine.candidates.models import Candidate
 from short_engine.core.config import Settings
 from short_engine.core.models import AspectRatio, TimeRange
 from short_engine.editing.jumpcuts import JumpCutPlanner
-from short_engine.editing.story import StoryPackage
+from short_engine.editorial.models import EditorialDecision
 from short_engine.ingest.probe import FFprobe
-from short_engine.ranking.models import Selection
 from short_engine.reframing.models import SubjectTrack
 from short_engine.reframing.planner import CropPlanner
 from short_engine.reframing.tracker import UltralyticsSubjectTracker
@@ -30,11 +28,9 @@ class StoryRenderService:
         source: Path,
         run_dir: Path,
         transcript: Transcript,
-        candidates: list[Candidate],
-        selection: Selection,
+        decision: EditorialDecision,
         aspect: AspectRatio,
         store: ManifestStore,
-        stories: StoryPackage | None = None,
     ) -> list[Path]:
         probe = FFprobe(self.runner).inspect(source)
         timeline = Timeline.model_validate_json(
@@ -46,9 +42,7 @@ class StoryRenderService:
             if BoundaryKind.SCENE in boundary.kinds
         ]
         renders: list[Path] = []
-        for index, (item_id, overall, source_ranges) in enumerate(
-            self._items(candidates, selection, stories), start=1
-        ):
+        for index, (item_id, overall, source_ranges) in enumerate(self._items(decision), start=1):
             output = run_dir / "renders" / f"short-{index:02d}.mp4"
             fingerprint = ",".join(
                 f"{item.start_seconds:.3f}-{item.end_seconds:.3f}" for item in source_ranges
@@ -124,23 +118,11 @@ class StoryRenderService:
         return renders
 
     @staticmethod
-    def _items(
-        candidates: list[Candidate], selection: Selection, stories: StoryPackage | None
-    ) -> list[tuple[str, TimeRange, list[TimeRange]]]:
-        if stories is None:
-            by_id = {item.id: item for item in candidates}
-            return [
-                (
-                    by_id[item.candidate_id].id,
-                    by_id[item.candidate_id].time_range,
-                    [by_id[item.candidate_id].time_range],
-                )
-                for item in selection.selected
-            ]
-        by_id = {item.id: item for item in stories.variants}
+    def _items(decision: EditorialDecision) -> list[tuple[str, TimeRange, list[TimeRange]]]:
+        by_id = {item.id: item for item in decision.editorial_map.plans}
         result: list[tuple[str, TimeRange, list[TimeRange]]] = []
-        for identifier in stories.selected_variant_ids:
-            ranges = [beat.source for beat in by_id[identifier].beats]
+        for identifier in decision.selected_plan_ids:
+            ranges = by_id[identifier].source_ranges
             result.append(
                 (
                     identifier,
