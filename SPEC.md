@@ -513,3 +513,28 @@ Stack choices were checked on 2026-08-28 against current primary project docs:
 
 Model checkpoints and tracking models remain benchmark-selected configuration,
 because pinning “SOTA” names in architecture would make the design stale.
+
+## 15. Editorial engine extension
+
+The engine no longer treats a short as only one continuous source interval.
+After multimodal ranking and boundary refinement, a narrative director must:
+
+- generate at least three materially different hook strategies;
+- compose typed `hook -> premise/escalation/evidence -> payoff` beats;
+- use only exact transcript boundaries and never fabricate speech;
+- permit a later payoff as a cold open followed by earlier context;
+- emit a temporal retention map with explicit drop-off risks and edit actions;
+- select the requested number of variants for rendering.
+
+Rendering must preserve the declared beat order, remap word timestamps across
+non-contiguous source ranges, and keep manifests resumable per story variant.
+
+Genre grammar is configuration, not branching pipeline code. Audio direction is
+optional and depends on an explicitly licensed local catalog with provenance.
+Music and effects amplify story beats but must not be required for a valid
+render.
+
+Near-live clipping is a separate orchestrator over shared domain services. It
+uses rolling media, incremental signals, and a highlight state machine; a clip
+may only become ready after a payoff signal. Live ingestion, publishing, and
+platform authentication remain outside the batch engine.

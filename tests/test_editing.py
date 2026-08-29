@@ -38,3 +38,18 @@ def test_short_pauses_do_not_create_choppy_cuts() -> None:
 
     assert len(plan.segments) == 1
     assert plan.removed_seconds == 0
+
+
+def test_jumpcut_planner_composes_multiple_source_ranges() -> None:
+    words = [word(0.2, 1, "hook"), word(10.2, 11, "payoff")]
+
+    plan = JumpCutPlanner().plan_many(
+        [
+            TimeRange(start_seconds=10, end_seconds=12),
+            TimeRange(start_seconds=0, end_seconds=2),
+        ],
+        words,
+    )
+
+    assert [segment.source.start_seconds for segment in plan.segments] == [10, 0]
+    assert plan.segments[1].output.start_seconds == 2

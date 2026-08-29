@@ -11,24 +11,19 @@ from short_engine.candidates.pool import CandidatePoolSampler
 from short_engine.core.config import Settings
 from short_engine.core.errors import InputError
 from short_engine.core.models import AspectRatio
-from short_engine.editing.jumpcuts import JumpCutPlanner
+from short_engine.editing.gemini import GeminiStoryDirector
+from short_engine.editing.story import StoryPackage
 from short_engine.ingest.media import FFmpegMediaService
 from short_engine.ingest.models import SourceRequest
-from short_engine.ingest.probe import FFprobe
 from short_engine.ingest.resolver import SourceResolver
+from short_engine.pipeline.story_renderer import StoryRenderService
 from short_engine.ranking.frames import FrameSampler
 from short_engine.ranking.gemini import GeminiRanker
 from short_engine.ranking.models import Selection
 from short_engine.ranking.refiner import GeminiBoundaryRefiner
 from short_engine.ranking.selector import CandidateSelector
-from short_engine.reframing.models import SubjectTrack
-from short_engine.reframing.planner import CropPlanner
-from short_engine.reframing.tracker import UltralyticsSubjectTracker
-from short_engine.rendering.captions import AssCaptionWriter
-from short_engine.rendering.renderer import FFmpegRenderer
 from short_engine.run.manifest import Artifact, ManifestStore, RunManifest
 from short_engine.segmentation.adapters import SceneDetector, SileroSpeechDetector
-from short_engine.segmentation.models import BoundaryKind, Timeline
 from short_engine.segmentation.timeline import TimelineBuilder
 from short_engine.system.process import SubprocessRunner
 from short_engine.transcription.mlx import MLXWhisperTranscriber
@@ -166,9 +161,26 @@ class Engine:
             refine_boundaries,
         )
         candidates = TypeAdapter(list[Candidate]).validate_json(refined_path.read_text())
+        stories_path = run_dir / "candidates" / "story-package.json"
+
+        def compose_stories() -> list[Artifact]:
+            by_id = {item.id: item for item in candidates}
+            selected_candidates = [by_id[item.candidate_id] for item in selection.selected]
+            stories = GeminiStoryDirector(
+                key.get_secret_value(), self.settings.gemini_model
+            ).compose(selected_candidates, transcript, clips)
+            stories_path.write_text(stories.model_dump_json(indent=2))
+            return [Artifact.from_path(stories_path, kind="story-package")]
+
+        store.execute(
+            "composition",
+            f"{candidate_fingerprint}:{self.settings.gemini_model}:{clips}:story-director-v1",
+            compose_stories,
+        )
+        stories = StoryPackage.model_validate_json(stories_path.read_text())
         renders = (
-            self._render_selection(
-                asset.path, run_dir, transcript, candidates, selection, aspect, store
+            StoryRenderService(self.settings, self.runner).render(
+                asset.path, run_dir, transcript, candidates, selection, aspect, store, stories
             )
             if render_outputs
             else []
@@ -212,105 +224,13 @@ class Engine:
                 raise InputError(
                     f"Candidate IDs are not selected in this manifest: {', '.join(sorted(missing))}"
                 )
-        renders = self._render_selection(
-            source, run_dir, transcript, candidates, selection, aspect, store
+        stories_path = run_dir / "candidates" / "story-package.json"
+        stories = (
+            StoryPackage.model_validate_json(stories_path.read_text())
+            if stories_path.is_file() and not candidate_ids
+            else None
+        )
+        renders = StoryRenderService(self.settings, self.runner).render(
+            source, run_dir, transcript, candidates, selection, aspect, store, stories
         )
         return EngineResult(manifest=manifest_path, renders=renders, selection=selection)
-
-    def _render_selection(
-        self,
-        source: Path,
-        run_dir: Path,
-        transcript: Transcript,
-        candidates: list[Candidate],
-        selection: Selection,
-        aspect: AspectRatio,
-        store: ManifestStore,
-    ) -> list[Path]:
-        probe = FFprobe(self.runner).inspect(source)
-        timeline = Timeline.model_validate_json(
-            (run_dir / "analysis" / "timeline.json").read_text()
-        )
-        scene_boundaries = [
-            boundary.at_seconds
-            for boundary in timeline.boundaries
-            if BoundaryKind.SCENE in boundary.kinds
-        ]
-        by_id = {item.id: item for item in candidates}
-        renders: list[Path] = []
-        for index, assessment in enumerate(selection.selected, start=1):
-            candidate = by_id[assessment.candidate_id]
-            output_path = run_dir / "renders" / f"short-{index:02d}.mp4"
-
-            def render(
-                candidate: Candidate = candidate,
-                index: int = index,
-                output_path: Path = output_path,
-            ) -> list[Artifact]:
-                words = [
-                    word
-                    for segment in transcript.segments
-                    for word in segment.words
-                    if candidate.time_range.start_seconds
-                    <= word.start_seconds
-                    < candidate.time_range.end_seconds
-                ]
-                edit_plan = JumpCutPlanner().plan(candidate.time_range, words)
-                edit_ranges = [segment.source for segment in edit_plan.segments]
-                candidate_scenes = [
-                    value
-                    for value in scene_boundaries
-                    if candidate.time_range.start_seconds
-                    <= value
-                    <= candidate.time_range.end_seconds
-                ]
-                try:
-                    track = UltralyticsSubjectTracker(self.settings.tracker_model).track(
-                        source, candidate.time_range, candidate_scenes
-                    )
-                except RuntimeError:
-                    track = SubjectTrack(observations=[])
-                crop = CropPlanner().plan(
-                    candidate.time_range,
-                    track,
-                    probe.width or 1920,
-                    probe.height or 1080,
-                    aspect,
-                    takes=edit_ranges,
-                    hard_cuts_seconds=candidate_scenes,
-                )
-                crop_path = run_dir / "renders" / f"short-{index:02d}.crop.json"
-                crop_path.parent.mkdir(parents=True, exist_ok=True)
-                crop_path.write_text(crop.model_dump_json(indent=2))
-                edit_path = run_dir / "renders" / f"short-{index:02d}.edit.json"
-                edit_path.write_text(edit_plan.model_dump_json(indent=2))
-                caption_path = AssCaptionWriter().write(
-                    run_dir / "renders" / f"short-{index:02d}.ass",
-                    edit_plan.remap_words(words),
-                    0,
-                )
-                rendered = FFmpegRenderer(self.runner).render(
-                    source,
-                    output_path,
-                    candidate.time_range,
-                    crop,
-                    caption_path,
-                    edits=edit_ranges,
-                )
-                return [
-                    Artifact.from_path(crop_path, kind="crop-plan"),
-                    Artifact.from_path(edit_path, kind="edit-plan"),
-                    Artifact.from_path(rendered, kind="render"),
-                ]
-
-            store.execute(
-                f"render:{candidate.id}",
-                (
-                    f"{candidate.id}:{candidate.time_range.start_seconds:.3f}:"
-                    f"{candidate.time_range.end_seconds:.3f}:{aspect}:"
-                    f"{self.settings.tracker_model}:render-v12-refined-range"
-                ),
-                render,
-            )
-            renders.append(output_path)
-        return renders

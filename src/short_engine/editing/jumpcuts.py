@@ -115,3 +115,27 @@ class JumpCutPlanner:
             segments=segments,
             original_duration_seconds=interval.duration_seconds,
         )
+
+    def plan_many(self, intervals: list[TimeRange], words: list[TimedWord]) -> EditPlan:
+        if not intervals:
+            raise ValueError("at least one source interval is required")
+        segments: list[EditSegment] = []
+        output_cursor = 0.0
+        for interval in intervals:
+            partial = self.plan(interval, words)
+            for segment in partial.segments:
+                duration = segment.source.duration_seconds
+                segments.append(
+                    EditSegment(
+                        source=segment.source,
+                        output=TimeRange(
+                            start_seconds=output_cursor,
+                            end_seconds=output_cursor + duration,
+                        ),
+                    )
+                )
+                output_cursor += duration
+        return EditPlan(
+            segments=segments,
+            original_duration_seconds=sum(item.duration_seconds for item in intervals),
+        )

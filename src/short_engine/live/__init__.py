@@ -1,0 +1,1 @@
+"""Near-live clipping contracts."""
