@@ -2,7 +2,7 @@
 
 import json
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
 from google.genai import types
 from pydantic import ValidationError
@@ -13,6 +13,7 @@ from short_engine.editing.story import StoryPackage
 from short_engine.transcription.models import Transcript
 
 GenerateFunction = Callable[..., Any]
+type JsonValue = str | int | float | bool | list["JsonValue"] | dict[str, "JsonValue"] | None
 
 
 class GeminiStoryDirector:
@@ -25,10 +26,12 @@ class GeminiStoryDirector:
     ) -> None:
         self.model = model
         self.attempts = attempts
+        self._client: Any | None = None
         if generate is None:
             from google import genai
 
-            generate = genai.Client(api_key=api_key).models.generate_content
+            self._client = genai.Client(api_key=api_key)
+            generate = self._client.models.generate_content
         self.generate = generate
 
     def compose(
@@ -66,13 +69,17 @@ class GeminiStoryDirector:
                 transcript.segments[index].end_seconds,
             )
         }
+        failures: list[str] = []
+        current_prompt = prompt
         for _ in range(self.attempts):
             response = self.generate(
                 model=self.model,
-                contents=prompt,
+                contents=current_prompt,
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
-                    response_json_schema=StoryPackage.model_json_schema(),
+                    response_json_schema=self._gemini_schema(
+                        cast(JsonValue, StoryPackage.model_json_schema())
+                    ),
                     temperature=0.35,
                 ),
             )
@@ -87,10 +94,43 @@ class GeminiStoryDirector:
                         if not self._exact(beat.source.end_seconds, boundaries):
                             raise ValueError("invented story end boundary")
                 return package
-            except (ValidationError, ValueError, json.JSONDecodeError):
+            except (ValidationError, ValueError, json.JSONDecodeError) as error:
+                failures.append(str(error))
+                current_prompt = (
+                    f"{prompt}\n\nYour previous response failed validation. Correct every variant, "
+                    "return the complete package again, and do not repeat the error below. The "
+                    "duration of a variant is the SUM of all its beat durations, not its source "
+                    f"timeline span.\nValidation error:\n{error}"
+                )
                 continue
-        raise ModelOutputError("Gemini could not produce a valid story package")
+        detail = failures[-1] if failures else "unknown validation failure"
+        raise ModelOutputError(f"Gemini could not produce a valid story package: {detail}")
 
     @staticmethod
     def _exact(value: float, boundaries: set[float]) -> bool:
         return bool(boundaries) and min(abs(item - value) for item in boundaries) <= 0.05
+
+    @classmethod
+    def _gemini_schema(cls, value: JsonValue, preserve_keys: bool = False) -> JsonValue:
+        if isinstance(value, dict):
+            return {
+                key: cls._gemini_schema(item, preserve_keys=key in {"$defs", "properties"})
+                for key, item in value.items()
+                if preserve_keys
+                or key
+                not in {
+                    "description",
+                    "exclusiveMinimum",
+                    "exclusiveMaximum",
+                    "maximum",
+                    "maxItems",
+                    "maxLength",
+                    "minimum",
+                    "minItems",
+                    "minLength",
+                    "title",
+                }
+            }
+        if isinstance(value, list):
+            return [cls._gemini_schema(item) for item in value]
+        return value

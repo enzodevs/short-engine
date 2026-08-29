@@ -2,7 +2,7 @@ import json
 
 from short_engine.candidates.models import Candidate
 from short_engine.core.models import TimeRange
-from short_engine.editing.gemini import GeminiStoryDirector
+from short_engine.editing.gemini import GeminiStoryDirector, JsonValue
 from short_engine.editing.story import StoryPackage
 from short_engine.transcription.models import Transcript, TranscriptSegment
 
@@ -76,3 +76,34 @@ def test_story_director_validates_exact_multibeat_composition() -> None:
 
     assert isinstance(package, StoryPackage)
     assert package.variants[0].beats[0].source.start_seconds == 20
+
+
+def test_story_director_removes_unsupported_gemini_schema_keywords() -> None:
+    schema: JsonValue = {
+        "type": "string",
+        "exclusiveMinimum": 0,
+        "minimum": 0,
+        "minLength": 1,
+        "maxLength": 20,
+        "title": "Value",
+    }
+
+    cleaned = GeminiStoryDirector._gemini_schema(schema)
+
+    assert cleaned == {"type": "string"}
+
+
+def test_story_director_preserves_domain_properties_named_like_schema_metadata() -> None:
+    schema: JsonValue = {
+        "type": "object",
+        "properties": {"title": {"type": "string", "title": "Title"}},
+        "required": ["title"],
+    }
+
+    cleaned = GeminiStoryDirector._gemini_schema(schema)
+
+    assert cleaned == {
+        "type": "object",
+        "properties": {"title": {"type": "string"}},
+        "required": ["title"],
+    }
