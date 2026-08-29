@@ -1,11 +1,17 @@
 """Deterministic interval suppression."""
 
 from short_engine.candidates.models import Candidate
-from short_engine.ranking.models import CandidateAssessment, Rejection, Selection
+from short_engine.ranking.models import (
+    CandidateAssessment,
+    EditorialQualityGate,
+    Rejection,
+    Selection,
+)
 
 
 class CandidateSelector:
-    def __init__(self, max_overlap_ratio: float = 0.35) -> None:
+    def __init__(self, quality: EditorialQualityGate, max_overlap_ratio: float = 0.35) -> None:
+        self.quality = quality
         self.max_overlap_ratio = max_overlap_ratio
 
     def select(
@@ -16,6 +22,9 @@ class CandidateSelector:
         rejected: list[Rejection] = []
         for assessment in sorted(assessments, key=lambda item: item.total_score, reverse=True):
             current = by_id[assessment.candidate_id]
+            if not self._passes_quality(assessment):
+                rejected.append(Rejection(candidate_id=current.id, reason="quality_gate"))
+                continue
             conflict = next(
                 (
                     kept
@@ -37,6 +46,17 @@ class CandidateSelector:
             else:
                 rejected.append(Rejection(candidate_id=current.id, reason="below_selection_cutoff"))
         return Selection(selected=selected, rejections=rejected)
+
+    def _passes_quality(self, assessment: CandidateAssessment) -> bool:
+        scores = assessment.scores
+        return (
+            assessment.total_score >= self.quality.min_total_score
+            and scores.hook_immediacy >= self.quality.min_hook_immediacy
+            and scores.narrative_arc >= self.quality.min_narrative_arc
+            and scores.payoff_strength >= self.quality.min_payoff_strength
+            and scores.standalone_clarity >= self.quality.min_standalone_clarity
+            and scores.retention_risk <= self.quality.max_retention_risk
+        )
 
     @staticmethod
     def _overlap(left: Candidate, right: Candidate) -> float:

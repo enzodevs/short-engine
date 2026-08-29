@@ -514,20 +514,23 @@ Stack choices were checked on 2026-08-28 against current primary project docs:
 Model checkpoints and tracking models remain benchmark-selected configuration,
 because pinning “SOTA” names in architecture would make the design stale.
 
-## 15. Editorial engine extension
+## 15. Editorial quality contract
 
-The engine no longer treats a short as only one continuous source interval.
-After multimodal ranking and boundary refinement, a narrative director must:
+The batch engine treats a short as one continuous source interval by default.
+After multimodal ranking, a candidate must pass configurable minimums for the
+overall score, hook immediacy, narrative arc, payoff strength, standalone
+clarity, and maximum retention risk. Requesting a clip count never overrides
+this gate: producing no clip is correct when the source has no complete moment.
 
-- generate at least three materially different hook strategies;
-- compose typed `hook -> premise/escalation/evidence -> payoff` beats;
-- use only exact transcript boundaries and never fabricate speech;
-- permit a later payoff as a cold open followed by earlier context;
-- emit a temporal retention map with explicit drop-off risks and edit actions;
-- select the requested number of variants for rendering.
+The exact interval assessed is the interval passed to rendering. Jump cuts may
+remove silence inside it, but no later semantic stage may shorten, reorder, or
+concatenate speech without a new quality assessment. Rendering must never
+manufacture a payoff by concatenating unrelated fragments.
 
-Rendering must preserve the declared beat order, remap word timestamps across
-non-contiguous source ranges, and keep manifests resumable per story variant.
+Typed non-contiguous story variants and retention maps remain research models,
+not part of the default batch pipeline. Reordering may only return after a
+separate semantic-continuity acceptance contract can prove referential
+continuity and that an explicit payoff resolves the opening promise.
 
 Genre grammar is configuration, not branching pipeline code. Audio direction is
 optional and depends on an explicitly licensed local catalog with provenance.

@@ -48,6 +48,17 @@ class CandidateAssessment(BaseModel):
         return round(max(0.0, positive - penalty), 2)
 
 
+class EditorialQualityGate(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    min_total_score: float = Field(default=45, ge=0, le=100)
+    min_hook_immediacy: int = Field(default=50, ge=0, le=100)
+    min_narrative_arc: int = Field(default=50, ge=0, le=100)
+    min_payoff_strength: int = Field(default=50, ge=0, le=100)
+    min_standalone_clarity: int = Field(default=55, ge=0, le=100)
+    max_retention_risk: int = Field(default=70, ge=0, le=100)
+
+
 class Rejection(BaseModel):
     candidate_id: str
     reason: str
