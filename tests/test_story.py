@@ -1,5 +1,8 @@
 import json
 
+import pytest
+from pydantic import ValidationError
+
 from short_engine.candidates.models import Candidate
 from short_engine.core.models import TimeRange
 from short_engine.editing.gemini import GeminiStoryDirector, JsonValue
@@ -107,3 +110,62 @@ def test_story_director_preserves_domain_properties_named_like_schema_metadata()
         "properties": {"title": {"type": "string"}},
         "required": ["title"],
     }
+
+
+def test_story_variant_accepts_a_ten_second_complete_arc() -> None:
+    raw = {
+        "id": "short-arc",
+        "title": "Short arc",
+        "genre": "technical",
+        "strategy": "Fast reveal",
+        "hook_text": "The bug",
+        "beats": [
+            {
+                "role": "hook",
+                "source": {"start_seconds": 0, "end_seconds": 4},
+                "rationale": "Immediate problem",
+            },
+            {
+                "role": "payoff",
+                "source": {"start_seconds": 4, "end_seconds": 10},
+                "rationale": "Complete resolution",
+            },
+        ],
+        "retention_map": [
+            {
+                "output_start_seconds": 0,
+                "output_end_seconds": 10,
+                "attention_reason": "Dense arc",
+                "drop_off_risk": 10,
+                "edit_action": "Keep",
+            }
+        ],
+        "predicted_retention_score": 80,
+        "fatal_flaw": "Very short",
+    }
+
+    package = StoryPackage.model_validate(
+        {
+            "variants": [raw, {**raw, "id": "b1"}, {**raw, "id": "c1"}],
+            "selected_variant_ids": ["short-arc"],
+        }
+    )
+
+    assert package.variants[0].duration_seconds == 10
+    with pytest.raises(ValidationError):
+        StoryPackage.model_validate(
+            {
+                "variants": [
+                    {
+                        **raw,
+                        "beats": [
+                            raw["beats"][0],
+                            {**raw["beats"][1], "source": {"start_seconds": 4, "end_seconds": 9}},
+                        ],
+                    },
+                    {**raw, "id": "b1"},
+                    {**raw, "id": "c1"},
+                ],
+                "selected_variant_ids": ["short-arc"],
+            }
+        )

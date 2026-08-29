@@ -53,3 +53,27 @@ def test_refiner_rejects_boundaries_not_present_in_transcript() -> None:
 
     with pytest.raises(ModelOutputError):
         refiner.refine(candidate, transcript)
+
+
+def test_refiner_retries_with_validation_feedback() -> None:
+    candidate, transcript = fixture()
+    responses = iter(
+        [
+            FakeResponse(
+                json.dumps({"start_seconds": 21.3, "end_seconds": 44.2, "rationale": "invented"})
+            ),
+            FakeResponse(
+                json.dumps({"start_seconds": 20, "end_seconds": 45, "rationale": "corrected"})
+            ),
+        ]
+    )
+    prompts: list[str] = []
+
+    def generate(**kwargs: object) -> FakeResponse:
+        prompts.append(str(kwargs["contents"]))
+        return next(responses)
+
+    refined = GeminiBoundaryRefiner("key", "model", generate=generate).refine(candidate, transcript)
+
+    assert refined.time_range == TimeRange(start_seconds=20, end_seconds=45)
+    assert "boundary does not match transcript" in prompts[1]

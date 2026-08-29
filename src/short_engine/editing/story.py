@@ -68,8 +68,8 @@ class StoryVariant(BaseModel):
             raise ValueError("first beat must be hook")
         if self.beats[-1].role is not BeatRole.PAYOFF:
             raise ValueError("last beat must be payoff")
-        if not 15 <= self.duration_seconds <= 60:
-            raise ValueError("story duration must be 15-60 seconds")
+        if not 10 <= self.duration_seconds <= 60:
+            raise ValueError("story duration must be 10-60 seconds")
         return self
 
 

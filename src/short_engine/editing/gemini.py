@@ -54,7 +54,7 @@ class GeminiStoryDirector:
             "meaningfully different edits from "
             "the source transcript. Use only exact timestamp boundaries shown. You may use a later "
             "payoff as a cold-open hook, then return to earlier premise/evidence, but never alter "
-            "meaning or fabricate speech. Each variant must be 15-60 seconds and follow hook -> "
+            "meaning or fabricate speech. Each variant must be 10-60 seconds and follow hook -> "
             "premise/escalation/evidence -> payoff. Remove setup that a cold viewer does not need. "
             "Create a second-by-second retention map, prescribe cuts for weak spans, and be severe "
             "about context dependency. Variants must represent distinct hook strategies, not minor "
@@ -99,7 +99,8 @@ class GeminiStoryDirector:
                 current_prompt = (
                     f"{prompt}\n\nYour previous response failed validation. Correct every variant, "
                     "return the complete package again, and do not repeat the error below. The "
-                    "duration of a variant is the SUM of all its beat durations, not its source "
+                    "duration of a variant must be 10-60 seconds and is the SUM of all its beat "
+                    "durations, not its source "
                     f"timeline span.\nValidation error:\n{error}"
                 )
                 continue

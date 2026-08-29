@@ -64,10 +64,12 @@ class GeminiBoundaryRefiner:
             f"Initially selected: {candidate.time_range.start_seconds:.2f}-"
             f"{candidate.time_range.end_seconds:.2f}\n{lines}"
         )
+        failures: list[str] = []
+        current_prompt = prompt
         for _ in range(self.attempts):
             response = self.generate(
                 model=self.model,
-                contents=prompt,
+                contents=current_prompt,
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
                     response_json_schema=RefinedBoundary.model_json_schema(),
@@ -94,9 +96,16 @@ class GeminiBoundaryRefiner:
                     segment_indexes=[transcript.segments.index(segment) for segment in selected],
                     boundary_signals=[*candidate.boundary_signals, "gemini-semantic-refinement"],
                 )
-            except (ValidationError, ValueError):
+            except (ValidationError, ValueError) as error:
+                failures.append(str(error))
+                current_prompt = (
+                    f"{prompt}\n\nYour previous response failed validation. Return a corrected "
+                    "boundary using exact timestamps from the transcript, with a duration between "
+                    f"15 and 60 seconds.\nValidation error:\n{error}"
+                )
                 continue
-        raise ModelOutputError(f"Gemini could not refine boundaries for {candidate.id}")
+        detail = failures[-1] if failures else "unknown validation failure"
+        raise ModelOutputError(f"Gemini could not refine boundaries for {candidate.id}: {detail}")
 
     @staticmethod
     def _exact(value: float, boundaries: set[float]) -> float:
