@@ -50,10 +50,17 @@ class GeminiBoundaryRefiner:
             for segment in context
         )
         prompt = (
-            "Choose a self-contained short-video excerpt using ONLY exact timestamps shown below. "
-            "Start at a compelling complete sentence or direct rebuttal; end after a "
-            "complete payoff. Never begin or end mid-sentence. Keep 20-90 seconds. "
-            "Prefer one speaker's coherent idea.\n"
+            "Act as a short-form retention editor. Choose a self-contained excerpt using ONLY "
+            "exact timestamps shown below. Optimize the first 1-2 seconds for a cold viewer: "
+            "begin on conflict, stakes, surprise, a bold claim, or a specific curiosity gap. "
+            "Remove greetings, throat-clearing, redundant setup, and context that can be inferred. "
+            "The opening sentence must explicitly name its subject and make sense in isolation. "
+            "Never begin with a raw number, conjunction, pronoun, or continuation whose referent "
+            "appeared in the previous sentence; include the shortest preceding premise needed. "
+            "The middle must escalate or provide evidence, and the ending must deliver the "
+            "promised "
+            "reveal, result, punchline, or insight. Never begin or end mid-sentence. Keep 15-60 "
+            "seconds and prefer the shortest complete hook-to-payoff arc.\n"
             f"Initially selected: {candidate.time_range.start_seconds:.2f}-"
             f"{candidate.time_range.end_seconds:.2f}\n{lines}"
         )
@@ -71,7 +78,7 @@ class GeminiBoundaryRefiner:
                 boundary = RefinedBoundary.model_validate_json(response.text or "")
                 start = self._exact(boundary.start_seconds, boundaries)
                 end = self._exact(boundary.end_seconds, boundaries)
-                if not 20 <= end - start <= 90:
+                if not 15 <= end - start <= 60:
                     raise ValueError("duration outside allowed range")
                 selected = [
                     segment

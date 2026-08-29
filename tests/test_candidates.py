@@ -1,4 +1,7 @@
 from short_engine.candidates.generator import CandidateConfig, TranscriptCandidateGenerator
+from short_engine.candidates.models import Candidate
+from short_engine.candidates.pool import CandidatePoolSampler
+from short_engine.core.models import TimeRange
 from short_engine.transcription.models import Transcript, TranscriptSegment
 
 
@@ -44,3 +47,19 @@ def test_sparse_transcript_does_not_fabricate_a_candidate() -> None:
     candidates = TranscriptCandidateGenerator().generate(transcript, CandidateConfig())
 
     assert candidates == []
+
+
+def test_candidate_pool_sampler_covers_entire_timeline() -> None:
+    candidates = [
+        Candidate(
+            id=str(index),
+            time_range=TimeRange(start_seconds=index * 10, end_seconds=index * 10 + 20),
+            transcript=f"candidate {index}",
+            segment_indexes=[index],
+        )
+        for index in range(100)
+    ]
+
+    selected = CandidatePoolSampler().select(candidates, 5)
+
+    assert [item.id for item in selected] == ["0", "25", "50", "74", "99"]

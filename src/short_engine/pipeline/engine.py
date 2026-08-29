@@ -7,6 +7,7 @@ from pydantic import BaseModel, TypeAdapter
 
 from short_engine.candidates.generator import CandidateConfig, TranscriptCandidateGenerator
 from short_engine.candidates.models import Candidate
+from short_engine.candidates.pool import CandidatePoolSampler
 from short_engine.core.config import Settings
 from short_engine.core.errors import InputError
 from short_engine.core.models import AspectRatio
@@ -100,10 +101,18 @@ class Engine:
             f"{asset.source_fingerprint}:adaptive-scene:silero-v6",
             segment,
         )
-        candidates = TranscriptCandidateGenerator().generate(transcript, CandidateConfig())
+        candidates = TranscriptCandidateGenerator().generate(
+            transcript,
+            CandidateConfig(
+                min_duration_seconds=15,
+                target_duration_seconds=35,
+                max_duration_seconds=60,
+                stride_segments=1,
+            ),
+        )
         if not candidates:
             raise InputError("No coherent candidate windows were found")
-        candidates = candidates[:24]
+        candidates = CandidatePoolSampler().select(candidates, 24)
         candidates_path = run_dir / "candidates" / "candidates.json"
         candidates_path.parent.mkdir(parents=True, exist_ok=True)
         candidates_path.write_text(
@@ -124,7 +133,8 @@ class Engine:
                 key.get_secret_value(),
                 self.settings.gemini_model,
                 debug_directory=run_dir / "debug",
-            ).rank(candidates, evidence)
+                assessment_directory=run_dir / "candidates" / "assessments-v1",
+            ).rank(candidates, evidence, video=proxy)
             selection = CandidateSelector().select(candidates, assessments, clips)
             ranking_path.write_text(selection.model_dump_json(indent=2))
             return [Artifact.from_path(ranking_path, kind="selection")]
@@ -132,7 +142,7 @@ class Engine:
         candidate_fingerprint = ":".join(item.id for item in candidates)
         store.execute(
             "ranking",
-            f"{candidate_fingerprint}:{self.settings.gemini_model}:{clips}",
+            f"{candidate_fingerprint}:{self.settings.gemini_model}:{clips}:viral-temporal-v1",
             rank,
         )
         selection = Selection.model_validate_json(ranking_path.read_text())
@@ -152,7 +162,7 @@ class Engine:
 
         store.execute(
             "refinement",
-            f"{candidate_fingerprint}:{self.settings.gemini_model}:semantic-v1",
+            f"{candidate_fingerprint}:{self.settings.gemini_model}:viral-boundaries-v3",
             refine_boundaries,
         )
         candidates = TypeAdapter(list[Candidate]).validate_json(refined_path.read_text())
@@ -295,7 +305,11 @@ class Engine:
 
             store.execute(
                 f"render:{candidate.id}",
-                f"{candidate.id}:{aspect}:{self.settings.tracker_model}:render-v11-camera-gestures",
+                (
+                    f"{candidate.id}:{candidate.time_range.start_seconds:.3f}:"
+                    f"{candidate.time_range.end_seconds:.3f}:{aspect}:"
+                    f"{self.settings.tracker_model}:render-v12-refined-range"
+                ),
                 render,
             )
             renders.append(output_path)

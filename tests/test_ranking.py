@@ -29,13 +29,17 @@ def test_gemini_ranker_validates_structured_response(tmp_path: Path) -> None:
     raw = {
         "candidate_id": "a",
         "scores": {name: 80 for name in RankingScores.model_fields},
+        "hook_summary": "Immediate conflict",
+        "body_summary": "Escalating proof",
+        "payoff_summary": "Clear reveal",
+        "fatal_flaw": "Minor jargon",
         "rationale": "Strong complete moment",
     }
     ranker = GeminiRanker(
         "key", "model", generate=lambda **_: FakeResponse(json.dumps(raw)), debug_directory=tmp_path
     )
     result = ranker.rank([candidate("a", 0, 30)], {"a": []})
-    assert result[0].total_score == 80
+    assert result[0].total_score == 60
 
 
 def test_gemini_ranker_fails_and_keeps_debug_response(tmp_path: Path) -> None:
@@ -58,6 +62,10 @@ def test_selector_suppresses_lower_scoring_overlap() -> None:
         return CandidateAssessment(
             candidate_id=item.id,
             scores=RankingScores(**{name: value for name in RankingScores.model_fields}),
+            hook_summary="hook",
+            body_summary="body",
+            payoff_summary="payoff",
+            fatal_flaw="risk",
             rationale="ok",
         )
 
