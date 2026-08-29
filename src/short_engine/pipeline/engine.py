@@ -247,14 +247,14 @@ class Engine:
                 ]
                 edit_plan = JumpCutPlanner().plan(candidate.time_range, words)
                 edit_ranges = [segment.source for segment in edit_plan.segments]
+                candidate_scenes = [
+                    value
+                    for value in scene_boundaries
+                    if candidate.time_range.start_seconds
+                    <= value
+                    <= candidate.time_range.end_seconds
+                ]
                 try:
-                    candidate_scenes = [
-                        value
-                        for value in scene_boundaries
-                        if candidate.time_range.start_seconds
-                        <= value
-                        <= candidate.time_range.end_seconds
-                    ]
                     track = UltralyticsSubjectTracker(self.settings.tracker_model).track(
                         source, candidate.time_range, candidate_scenes
                     )
@@ -267,6 +267,7 @@ class Engine:
                     probe.height or 1080,
                     aspect,
                     takes=edit_ranges,
+                    hard_cuts_seconds=candidate_scenes,
                 )
                 crop_path = run_dir / "renders" / f"short-{index:02d}.crop.json"
                 crop_path.parent.mkdir(parents=True, exist_ok=True)
@@ -294,7 +295,7 @@ class Engine:
 
             store.execute(
                 f"render:{candidate.id}",
-                f"{candidate.id}:{aspect}:{self.settings.tracker_model}:render-v9-take-camera",
+                f"{candidate.id}:{aspect}:{self.settings.tracker_model}:render-v11-camera-gestures",
                 render,
             )
             renders.append(output_path)

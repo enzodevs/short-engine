@@ -117,13 +117,14 @@ def test_motion_expression_interpolates_crop_samples() -> None:
         used_fallback=False,
     )
 
-    expression = FFmpegRenderer._motion_expression(
+    expression = FFmpegRenderer()._motion_expression(
         plan, TimeRange(start_seconds=10, end_seconds=12), "x"
     )
 
-    assert "t-0.000" in expression
+    assert "t-1.286" in expression
     assert "100.00" in expression
     assert "300.0" in expression
+    assert "*(10-15*" in expression
 
 
 def test_motion_expression_ignores_micro_adjustments() -> None:
@@ -138,8 +139,42 @@ def test_motion_expression_ignores_micro_adjustments() -> None:
         used_fallback=False,
     )
 
-    expression = FFmpegRenderer._motion_expression(
+    expression = FFmpegRenderer()._motion_expression(
         plan, TimeRange(start_seconds=10, end_seconds=12), "x"
     )
 
     assert expression == "100.0"
+
+
+def test_renderer_splits_camera_at_hard_scene_cuts() -> None:
+    segments = FFmpegRenderer._split_at_hard_cuts(
+        [TimeRange(start_seconds=10, end_seconds=20)], [12, 17]
+    )
+
+    assert [(item.start_seconds, item.end_seconds) for item in segments] == [
+        (10, 12),
+        (12, 17),
+        (17, 20),
+    ]
+
+
+def test_renderer_consolidates_monotonic_tracking_into_one_camera_move() -> None:
+    samples = [
+        CropSample(time_seconds=index, x=value, y=0)
+        for index, value in enumerate([100, 130, 170, 240, 310])
+    ]
+
+    controls = FFmpegRenderer._control_samples(samples, "x")
+
+    assert controls == [samples[0], samples[-1]]
+
+
+def test_renderer_preserves_real_direction_change() -> None:
+    samples = [
+        CropSample(time_seconds=index, x=value, y=0)
+        for index, value in enumerate([100, 180, 260, 160, 80])
+    ]
+
+    controls = FFmpegRenderer._control_samples(samples, "x")
+
+    assert controls == [samples[0], samples[2], samples[-1]]

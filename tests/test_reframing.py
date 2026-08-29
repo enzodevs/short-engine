@@ -44,7 +44,7 @@ def test_comfort_camera_locks_small_stationary_jitter() -> None:
     assert len({sample.x for sample in plan.samples}) == 1
 
 
-def test_comfort_camera_limits_motion_inside_scene_but_resets_between_scenes() -> None:
+def test_comfort_camera_records_hard_cut_and_resets_between_scenes() -> None:
     track = SubjectTrack(
         observations=[
             SubjectObservation(
@@ -55,18 +55,21 @@ def test_comfort_camera_limits_motion_inside_scene_but_resets_between_scenes() -
                 scene_id=scene,
             )
             for i, (x, scene) in enumerate(
-                [(300, 0), (800, 0), (1400, 0), (1500, 1), (500, 1), (200, 1)]
+                [(300, 0), (800, 0), (1400, 0), (1700, 1), (1650, 1), (1720, 1)]
             )
         ]
     )
-    plan = CropPlanner(max_step_ratio=0.02).plan(
-        TimeRange(start_seconds=0, end_seconds=6), track, 1920, 1080, AspectRatio.VERTICAL
+    plan = CropPlanner().plan(
+        TimeRange(start_seconds=0, end_seconds=6),
+        track,
+        1920,
+        1080,
+        AspectRatio.VERTICAL,
+        hard_cuts_seconds=[3],
     )
 
-    assert abs(plan.samples[1].x - plan.samples[0].x) <= 38.4
-    assert abs(plan.samples[2].x - plan.samples[1].x) <= 38.4
-    assert abs(plan.samples[3].x - plan.samples[2].x) > 38.4
-    assert abs(plan.samples[4].x - plan.samples[3].x) <= 38.4
+    assert plan.hard_cuts_seconds == [3]
+    assert abs(plan.samples[3].x - plan.samples[2].x) > 100
 
 
 def test_jump_cut_starts_new_camera_take_without_anticipation() -> None:

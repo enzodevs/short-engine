@@ -11,14 +11,12 @@ class CropPlanner:
         self,
         smoothing: float = 0.82,
         stationary_threshold: float = 0.10,
-        max_step_ratio: float = 0.018,
         dead_zone_ratio: float = 0.035,
     ) -> None:
         if not 0 <= smoothing < 1:
             raise ValueError("smoothing must be in [0, 1)")
         self.smoothing = smoothing
         self.stationary_threshold = stationary_threshold
-        self.max_step_ratio = max_step_ratio
         self.dead_zone_ratio = dead_zone_ratio
 
     def plan(
@@ -29,6 +27,7 @@ class CropPlanner:
         frame_height: int,
         aspect: AspectRatio,
         takes: list[TimeRange] | None = None,
+        hard_cuts_seconds: list[float] | None = None,
     ) -> CropPlan:
         target_ratio = {
             AspectRatio.VERTICAL: 9 / 16,
@@ -66,6 +65,7 @@ class CropPlanner:
                     )
                 ],
                 used_fallback=True,
+                hard_cuts_seconds=self._active_hard_cuts(active_takes, hard_cuts_seconds or []),
             )
         samples: list[CropSample] = []
         for take in active_takes:
@@ -92,7 +92,11 @@ class CropPlanner:
                     for item, x, y in zip(scene, x_values, y_values, strict=True)
                 )
         return CropPlan(
-            crop_width=crop_width, crop_height=crop_height, samples=samples, used_fallback=False
+            crop_width=crop_width,
+            crop_height=crop_height,
+            samples=samples,
+            used_fallback=False,
+            hard_cuts_seconds=self._active_hard_cuts(active_takes, hard_cuts_seconds or []),
         )
 
     def _comfort_path(self, values: list[float], frame_size: int, crop_size: int) -> list[float]:
@@ -117,12 +121,15 @@ class CropPlanner:
             if abs(value - target) >= dead_zone:
                 target = value
             intentional.append(target)
-        max_step = frame_size * self.max_step_ratio
-        limited: list[float] = [float(intentional[0])]
-        for value in intentional[1:]:
-            delta = min(max(value - limited[-1], -max_step), max_step)
-            limited.append(limited[-1] + delta)
-        return limited
+        return [float(value) for value in intentional]
+
+    @staticmethod
+    def _active_hard_cuts(takes: list[TimeRange], cuts: list[float]) -> list[float]:
+        return sorted(
+            cut
+            for cut in cuts
+            if any(take.start_seconds < cut < take.end_seconds for take in takes)
+        )
 
     @staticmethod
     def _weighted_average(values: list[float], radius: int) -> list[float]:

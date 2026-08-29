@@ -5,13 +5,23 @@ from pathlib import Path
 
 from short_engine.core.errors import RenderError
 from short_engine.core.models import TimeRange
-from short_engine.reframing.models import CropPlan
+from short_engine.reframing.curves import MotionCurve, SmootherstepCurve
+from short_engine.reframing.models import CropPlan, CropSample
 from short_engine.system.process import CommandRunner, SubprocessRunner
 
 
 class FFmpegRenderer:
-    def __init__(self, runner: CommandRunner | None = None) -> None:
+    def __init__(
+        self,
+        runner: CommandRunner | None = None,
+        motion_curve: MotionCurve | None = None,
+        max_transition_seconds: float = 2.0,
+        camera_speed_pixels_per_second: float = 280.0,
+    ) -> None:
         self.runner = runner or SubprocessRunner()
+        self.motion_curve = motion_curve or SmootherstepCurve()
+        self.max_transition_seconds = max_transition_seconds
+        self.camera_speed_pixels_per_second = camera_speed_pixels_per_second
 
     def render(
         self,
@@ -31,7 +41,7 @@ class FFmpegRenderer:
             output_width, output_height = 1080, 1080
         else:
             output_width, output_height = 1920, 1080
-        edit_ranges = edits or [interval]
+        edit_ranges = self._split_at_hard_cuts(edits or [interval], crop.hard_cuts_seconds)
         chains: list[str] = []
         concat_inputs: list[str] = []
         for index, edit in enumerate(edit_ranges):
@@ -86,8 +96,7 @@ class FFmpegRenderer:
         temporary.replace(output)
         return output
 
-    @staticmethod
-    def _motion_expression(crop: CropPlan, interval: TimeRange, axis: str) -> str:
+    def _motion_expression(self, crop: CropPlan, interval: TimeRange, axis: str) -> str:
         samples = [
             sample
             for sample in crop.samples
@@ -98,22 +107,66 @@ class FFmpegRenderer:
             samples = [min(crop.samples, key=lambda sample: abs(sample.time_seconds - midpoint))]
         if len(samples) == 1:
             return str(round(getattr(samples[0], axis), 2))
-        reduced = [samples[0]]
-        for sample in samples[1:-1]:
-            elapsed = sample.time_seconds - reduced[-1].time_seconds
-            displacement = abs(getattr(sample, axis) - getattr(reduced[-1], axis))
-            if (elapsed >= 0.5 and displacement >= 24) or (elapsed >= 2.0 and displacement >= 8):
-                reduced.append(sample)
-        if abs(getattr(samples[-1], axis) - getattr(reduced[-1], axis)) >= 8:
-            reduced.append(samples[-1])
+        reduced = self._control_samples(samples, axis)
         if len(reduced) == 1:
             return str(round(getattr(reduced[0], axis), 2))
         expression = str(round(getattr(reduced[-1], axis), 2))
         for left, right in reversed(list(pairwise(reduced))):
-            start = max(0.0, left.time_seconds - interval.start_seconds)
-            end = max(start + 0.001, right.time_seconds - interval.start_seconds)
+            end = max(0.001, right.time_seconds - interval.start_seconds)
+            available = max(0.001, right.time_seconds - left.time_seconds)
+            distance = abs(getattr(right, axis) - getattr(left, axis))
+            natural_duration = max(0.45, distance / self.camera_speed_pixels_per_second)
+            duration = min(self.max_transition_seconds, available, natural_duration)
+            start = max(0.0, end - duration)
             origin = getattr(left, axis)
             delta = getattr(right, axis) - origin
-            linear = f"{origin:.2f}+({delta:.2f})*(t-{start:.3f})/{end - start:.3f}"
-            expression = f"if(lt(t\\,{end:.3f})\\,{linear}\\,{expression})"
+            progress = f"(t-{start:.3f})/{duration:.3f}"
+            eased = self.motion_curve.ffmpeg(progress)
+            motion = f"{origin:.2f}+({delta:.2f})*({eased})"
+            expression = (
+                f"if(lt(t\\,{start:.3f})\\,{origin:.2f}\\,"
+                f"if(lt(t\\,{end:.3f})\\,{motion}\\,{expression}))"
+            )
         return expression
+
+    @staticmethod
+    def _control_samples(samples: list[CropSample], axis: str) -> list[CropSample]:
+        if len(samples) < 2:
+            return samples
+        controls = [samples[0]]
+        direction = 0
+        previous = samples[0]
+        for sample in samples[1:]:
+            step = getattr(sample, axis) - getattr(previous, axis)
+            step_direction = 1 if step >= 8 else -1 if step <= -8 else 0
+            if step_direction and direction and step_direction != direction:
+                if abs(getattr(previous, axis) - getattr(controls[-1], axis)) >= 24:
+                    controls.append(previous)
+                direction = step_direction
+            elif step_direction:
+                direction = step_direction
+            previous = sample
+        if abs(getattr(samples[-1], axis) - getattr(controls[-1], axis)) >= 8:
+            controls.append(samples[-1])
+        return controls
+
+    @staticmethod
+    def _split_at_hard_cuts(
+        intervals: list[TimeRange], hard_cuts_seconds: list[float]
+    ) -> list[TimeRange]:
+        result: list[TimeRange] = []
+        for interval in intervals:
+            points = [
+                interval.start_seconds,
+                *(
+                    cut
+                    for cut in hard_cuts_seconds
+                    if interval.start_seconds < cut < interval.end_seconds
+                ),
+                interval.end_seconds,
+            ]
+            result.extend(
+                TimeRange(start_seconds=start, end_seconds=end)
+                for start, end in pairwise(sorted(set(points)))
+            )
+        return result

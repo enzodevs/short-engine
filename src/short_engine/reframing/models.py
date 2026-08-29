@@ -27,3 +27,4 @@ class CropPlan(BaseModel):
     crop_height: int
     samples: list[CropSample]
     used_fallback: bool
+    hard_cuts_seconds: list[float] = Field(default_factory=list)
