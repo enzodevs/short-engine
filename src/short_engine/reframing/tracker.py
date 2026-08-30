@@ -81,6 +81,10 @@ class UltralyticsSubjectTracker:
                     center_y=(y1 + y2) / 2,
                     confidence=float(confidences[best]),
                     scene_id=scene_id,
+                    left_x=x1,
+                    top_y=y1,
+                    right_x=x2,
+                    bottom_y=y2,
                 )
             )
         capture.release()

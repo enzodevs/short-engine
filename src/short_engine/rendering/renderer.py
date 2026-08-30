@@ -6,7 +6,7 @@ from pathlib import Path
 from short_engine.core.errors import RenderError
 from short_engine.core.models import TimeRange
 from short_engine.reframing.curves import MotionCurve, SmootherstepCurve
-from short_engine.reframing.models import CropPlan, CropSample
+from short_engine.reframing.models import CropPlan, CropSample, ReactionLayout
 from short_engine.system.process import CommandRunner, SubprocessRunner
 
 
@@ -31,6 +31,7 @@ class FFmpegRenderer:
         crop: CropPlan,
         captions: Path | None = None,
         edits: list[TimeRange] | None = None,
+        reaction_layout: ReactionLayout | None = None,
     ) -> Path:
         output.parent.mkdir(parents=True, exist_ok=True)
         temporary = output.with_suffix(".partial.mp4")
@@ -45,18 +46,37 @@ class FFmpegRenderer:
         chains: list[str] = []
         concat_inputs: list[str] = []
         for index, edit in enumerate(edit_ranges):
-            video_filters = [
+            base_filters = [
                 f"trim=start={edit.start_seconds:.3f}:end={edit.end_seconds:.3f}",
                 "setpts=PTS-STARTPTS",
-                (
-                    f"crop={crop.crop_width}:{crop.crop_height}:"
-                    f"x='{self._motion_expression(crop, edit, 'x')}':"
-                    f"y='{self._motion_expression(crop, edit, 'y')}'"
-                ),
-                f"scale={output_width}:{output_height}:force_original_aspect_ratio=decrease",
-                f"pad={output_width}:{output_height}:(ow-iw)/2:(oh-ih)/2",
             ]
-            chains.append(f"[0:v]{','.join(video_filters)}[v{index}]")
+            if reaction_layout is None:
+                video_filters = [
+                    *base_filters,
+                    (
+                        f"crop={crop.crop_width}:{crop.crop_height}:"
+                        f"x='{self._motion_expression(crop, edit, 'x')}':"
+                        f"y='{self._motion_expression(crop, edit, 'y')}'"
+                    ),
+                    f"scale={output_width}:{output_height}:force_original_aspect_ratio=decrease",
+                    f"pad={output_width}:{output_height}:(ow-iw)/2:(oh-ih)/2",
+                ]
+                chains.append(f"[0:v]{','.join(video_filters)}[v{index}]")
+            else:
+                facecam = reaction_layout.facecam
+                content = reaction_layout.content
+                facecam_height = reaction_layout.facecam_panel_height
+                content_height = 1920 - facecam_height
+                chains.append(f"[0:v]{','.join(base_filters)},split=2[basef{index}][basec{index}]")
+                chains.append(
+                    f"[basef{index}]crop={facecam.width}:{facecam.height}:"
+                    f"{facecam.x}:{facecam.y},scale=1080:{facecam_height}[face{index}]"
+                )
+                chains.append(
+                    f"[basec{index}]crop={content.width}:{content.height}:"
+                    f"{content.x}:{content.y},scale=1080:{content_height}[content{index}]"
+                )
+                chains.append(f"[face{index}][content{index}]vstack=2[v{index}]")
             chains.append(
                 f"[0:a]atrim=start={edit.start_seconds:.3f}:end={edit.end_seconds:.3f},"
                 f"asetpts=PTS-STARTPTS[a{index}]"

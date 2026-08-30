@@ -537,6 +537,13 @@ meaning preservation, and whether the payoff resolves the opening. Only plans
 that pass every invariant and the hook/retention thresholds may render.
 Requesting a clip count never overrides this gate.
 
+For vertical reaction content, a persistent person detection in a peripheral
+source region is treated as a facecam overlay rather than the sole crop target.
+The renderer places its robust motion envelope in the upper third and uses a
+centered crop of the underlying content in the lower two thirds. Ordinary
+talking-head footage and moving full-frame subjects remain on the standard
+scene-aware crop path.
+
 Genre grammar is configuration, not branching pipeline code. Audio direction is
 optional and depends on an explicitly licensed local catalog with provenance.
 Music and effects amplify story beats but must not be required for a valid

@@ -1,6 +1,7 @@
 from short_engine.core.models import AspectRatio, TimeRange
 from short_engine.reframing.models import SubjectObservation, SubjectTrack
 from short_engine.reframing.planner import CropPlanner
+from short_engine.reframing.reaction import ReactionLayoutDetector
 
 
 def test_crop_plan_is_bounded_and_smoothed() -> None:
@@ -103,3 +104,48 @@ def test_jump_cut_starts_new_camera_take_without_anticipation() -> None:
     assert len(set(first_take)) == 1
     assert len(set(second_take)) == 1
     assert second_take[0] - first_take[-1] > 800
+
+
+def test_reaction_layout_detects_stable_corner_facecam() -> None:
+    track = SubjectTrack(
+        observations=[
+            SubjectObservation(
+                time_seconds=index,
+                center_x=170 + index % 3,
+                center_y=570 + index % 2,
+                confidence=0.9,
+                left_x=20,
+                top_y=430,
+                right_x=320,
+                bottom_y=710,
+            )
+            for index in range(12)
+        ]
+    )
+
+    layout = ReactionLayoutDetector().detect(track, 1280, 720)
+
+    assert layout is not None
+    assert layout.facecam.x == 0
+    assert layout.facecam_panel_height == 640
+    assert layout.content.x > 300
+
+
+def test_reaction_layout_rejects_moving_full_frame_subject() -> None:
+    track = SubjectTrack(
+        observations=[
+            SubjectObservation(
+                time_seconds=index,
+                center_x=300 + index * 50,
+                center_y=360,
+                confidence=0.9,
+                left_x=100,
+                top_y=80,
+                right_x=900,
+                bottom_y=700,
+            )
+            for index in range(12)
+        ]
+    )
+
+    assert ReactionLayoutDetector().detect(track, 1280, 720) is None

@@ -9,6 +9,7 @@ from short_engine.editorial.models import EditorialDecision
 from short_engine.ingest.probe import FFprobe
 from short_engine.reframing.models import SubjectTrack
 from short_engine.reframing.planner import CropPlanner
+from short_engine.reframing.reaction import ReactionLayoutDetector
 from short_engine.reframing.tracker import UltralyticsSubjectTracker
 from short_engine.rendering.captions import AssCaptionWriter
 from short_engine.rendering.renderer import FFmpegRenderer
@@ -88,29 +89,50 @@ class StoryRenderService:
                     takes=edit_ranges,
                     hard_cuts_seconds=scenes,
                 )
+                reaction_layout = (
+                    ReactionLayoutDetector().detect(
+                        track, probe.width or 1920, probe.height or 1080
+                    )
+                    if aspect is AspectRatio.VERTICAL
+                    else None
+                )
                 render_dir = run_dir / "renders"
                 render_dir.mkdir(parents=True, exist_ok=True)
                 crop_path = render_dir / f"short-{index:02d}.crop.json"
                 crop_path.write_text(crop.model_dump_json(indent=2))
                 edit_path = render_dir / f"short-{index:02d}.edit.json"
                 edit_path.write_text(edit_plan.model_dump_json(indent=2))
+                layout_path = render_dir / f"short-{index:02d}.reaction.json"
+                if reaction_layout is not None:
+                    layout_path.write_text(reaction_layout.model_dump_json(indent=2))
+                else:
+                    layout_path.unlink(missing_ok=True)
                 captions = AssCaptionWriter().write(
                     render_dir / f"short-{index:02d}.ass", edit_plan.remap_words(words), 0
                 )
                 rendered = FFmpegRenderer(self.runner).render(
-                    source, output, overall, crop, captions, edits=edit_ranges
+                    source,
+                    output,
+                    overall,
+                    crop,
+                    captions,
+                    edits=edit_ranges,
+                    reaction_layout=reaction_layout,
                 )
-                return [
+                artifacts = [
                     Artifact.from_path(crop_path, kind="crop-plan"),
                     Artifact.from_path(edit_path, kind="edit-plan"),
                     Artifact.from_path(rendered, kind="render"),
                 ]
+                if reaction_layout is not None:
+                    artifacts.append(Artifact.from_path(layout_path, kind="reaction-layout"))
+                return artifacts
 
             store.execute(
                 f"render:{item_id}",
                 (
                     f"{item_id}:{fingerprint}:{aspect}:{self.settings.tracker_model}:"
-                    "render-v13-story-composition"
+                    "render-v15-reaction-layout"
                 ),
                 execute,
             )
