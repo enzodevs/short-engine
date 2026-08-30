@@ -292,23 +292,34 @@ must depend on these behavioral contracts:
 class SourceResolver(Protocol):
     def resolve(self, request: SourceRequest, run: RunContext) -> MediaAsset: ...
 
+
 class Transcriber(Protocol):
     def transcribe(self, media: MediaAsset, config: ASRConfig) -> Transcript: ...
+
 
 class BoundaryDetector(Protocol):
     def detect(self, media: MediaAsset, transcript: Transcript) -> BoundarySet: ...
 
+
 class CandidateGenerator(Protocol):
     def generate(self, timeline: Timeline, config: CandidateConfig) -> list[Candidate]: ...
 
+
 class CandidateRanker(Protocol):
-    def rank(self, candidates: list[Candidate], evidence: EvidenceBundle) -> list[CandidateAssessment]: ...
+    def rank(
+        self, candidates: list[Candidate], evidence: EvidenceBundle
+    ) -> list[CandidateAssessment]: ...
+
 
 class SubjectTracker(Protocol):
     def track(self, media: MediaAsset, interval: TimeRange) -> SubjectTrack: ...
 
+
 class CropPlanner(Protocol):
-    def plan(self, interval: TimeRange, track: SubjectTrack, profile: OutputProfile) -> CropPlan: ...
+    def plan(
+        self, interval: TimeRange, track: SubjectTrack, profile: OutputProfile
+    ) -> CropPlan: ...
+
 
 class Renderer(Protocol):
     def render(self, job: RenderJob, run: RunContext) -> RenderedClip: ...
